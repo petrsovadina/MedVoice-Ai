@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { Eye, Edit2, Check, Play, Pause } from 'lucide-react';
+import Placeholder from '@tiptap/extension-placeholder';
+import { 
+    Eye, Edit2, Check, Play, Pause, 
+    Bold, Italic, Strikethrough, Heading1, Heading2, List, ListOrdered 
+} from 'lucide-react';
 import { TranscriptSegment } from '../types';
 
 interface TranscriptEditorProps {
@@ -28,23 +32,26 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
 
   // Editor Setup
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+        StarterKit,
+        Placeholder.configure({
+            placeholder: 'Začněte psát...',
+        }),
+    ],
     content: transcript,
     editorProps: {
         attributes: {
-            class: 'prose prose-sm sm:prose-base lg:prose-lg xl:prose-2xl m-5 focus:outline-none min-h-[300px]',
+            class: 'prose prose-sm sm:prose-base lg:prose-lg xl:prose-2xl focus:outline-none min-h-[300px]',
         },
     },
     onUpdate: ({ editor }) => {
-        // We could autosave here, but for now we save on "Done" click
+        // Optional: auto-save logic could go here
     }
   });
 
   // Sync editor content if transcript changes externally
   useEffect(() => {
     if (editor && transcript !== editor.getText()) {
-        // Only update if significantly different to avoid cursor jumps, 
-        // strictly speaking for this app structure, we update when entering edit mode mostly.
         if (!isEditing) {
              editor.commands.setContent(transcript);
         }
@@ -113,6 +120,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       } else {
           // Entering edit mode
           if (editor) {
+              // Ensure editor has latest content before editing
               editor.commands.setContent(transcript);
           }
       }
@@ -210,6 +218,63 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
             )}
         </div>
 
+        {/* FORMATTING TOOLBAR (Visible only in Edit Mode) */}
+        {isEditing && editor && (
+            <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-slate-200">
+                <button
+                    onClick={() => editor.chain().focus().toggleBold().run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('bold') ? 'is-active' : 'text-slate-600'}`}
+                    title="Tučně"
+                >
+                    <Bold size={16} />
+                </button>
+                <button
+                    onClick={() => editor.chain().focus().toggleItalic().run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('italic') ? 'is-active' : 'text-slate-600'}`}
+                    title="Kurzíva"
+                >
+                    <Italic size={16} />
+                </button>
+                <button
+                    onClick={() => editor.chain().focus().toggleStrike().run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('strike') ? 'is-active' : 'text-slate-600'}`}
+                    title="Přeškrtnuté"
+                >
+                    <Strikethrough size={16} />
+                </button>
+                <div className="w-px h-5 bg-slate-300 mx-1"></div>
+                <button
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('heading', { level: 1 }) ? 'is-active' : 'text-slate-600'}`}
+                    title="Nadpis 1"
+                >
+                    <Heading1 size={16} />
+                </button>
+                <button
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('heading', { level: 2 }) ? 'is-active' : 'text-slate-600'}`}
+                    title="Nadpis 2"
+                >
+                    <Heading2 size={16} />
+                </button>
+                <div className="w-px h-5 bg-slate-300 mx-1"></div>
+                <button
+                    onClick={() => editor.chain().focus().toggleBulletList().run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('bulletList') ? 'is-active' : 'text-slate-600'}`}
+                    title="Seznam"
+                >
+                    <List size={16} />
+                </button>
+                <button
+                    onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                    className={`p-1.5 rounded hover:bg-slate-200 transition-colors ${editor.isActive('orderedList') ? 'is-active' : 'text-slate-600'}`}
+                    title="Číslovaný seznam"
+                >
+                    <ListOrdered size={16} />
+                </button>
+            </div>
+        )}
+
         {/* Audio Player Bar - Only visible in Read Mode or if we want it during edit (optional, usually hide during edit to focus) */}
         {!isEditing && audioUrl && (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200">
@@ -242,7 +307,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       {/* Content Area */}
       <div className="flex-1 relative overflow-hidden bg-white">
         {isEditing ? (
-             <div className="h-full overflow-y-auto p-4">
+             <div className="h-full overflow-y-auto p-4 cursor-text">
                 <EditorContent editor={editor} />
              </div>
         ) : (
