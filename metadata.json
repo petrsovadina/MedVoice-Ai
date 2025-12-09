@@ -1,0 +1,7 @@
+{
+  "name": "MedVoice AI",
+  "description": "Inteligentní lékařská dokumentace a přepis pro zdravotníky.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
