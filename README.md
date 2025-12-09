@@ -1,62 +1,89 @@
 # MedVoice AI 🩺
 
-MedVoice AI je moderní webová aplikace navržená pro zdravotníky, která využívá sílu generativní umělé inteligence (Google Gemini) k automatizaci administrativy. Transformuje hlasové záznamy z konzultací na strukturovanou lékařskou dokumentaci, šetří čas lékařů a zvyšuje kvalitu záznamů.
+**Inteligentní dokumentační asistent pro moderní zdravotnictví**
 
-## 🚀 Klíčové Funkce
+MedVoice AI je webová aplikace nové generace, která využívá generativní umělou inteligenci (Google Gemini) k automatizaci tvorby zdravotnické dokumentace. Transformuje hlasový záznam konzultace (prezenční i distanční) na strukturované lékařské záznamy v souladu s platnou legislativou ČR.
+
+---
+
+## ⚖️ Legislativní Rámec a Standardy
+
+Aplikace je navržena tak, aby generované výstupy splňovaly požadavky na vedení zdravotnické dokumentace dle platných norem:
+
+*   **Vyhláška č. 444/2024 Sb.** o zdravotnické dokumentaci (struktura záznamů).
+*   **Zákon č. 372/2011 Sb.** o zdravotních službách (informovaný souhlas, negativní revers, poučení).
+*   **Standardy NCEZ** (Národní centrum elektronického zdravotnictví).
+
+---
+
+## 📋 Podporované Typy Dokumentace
+
+Systém automaticky rozpozná kontext rozhovoru a vytvoří příslušný typ dokumentu:
+
+### 1. Záznam o poskytnuté zdravotní službě (Ambulantní záznam)
+*   **Dle:** §3–§6 Vyhlášky 444/2024 Sb.
+*   **Funkce:** Automatická strukturace do formátu SOAP (Subjektivní, Objektivní, Hodnocení, Plán).
+*   **Obsah:** Identifikace, důvod návštěvy, fyzikální nález, diagnostický závěr, terapeutický plán.
+
+### 2. Výpis ze zdravotnické dokumentace
+*   **Dle:** Standardů pro předávání péče (zaměstnavatel, pojišťovna, PL).
+*   **Funkce:** Agregace historie, chronických onemocnění a medikace do přehledného souhrnu.
+
+### 3. Konziliární zpráva / Žádanka
+*   **Dle:** Metodiky pro sdílení péče mezi specialisty.
+*   **Funkce:** Extrakce klíčové klinické otázky a relevantní anamnézy pro konzultujícího lékaře.
+
+### 4. Záznam o distanční konzultaci (Telemedicína)
+*   **Dle:** §5 odst. 1 písm. e) Vyhlášky 444/2024 Sb.
+*   **Funkce:** Přepis telefonických hovorů s identifikací volajícího, důvodu kontaktu a doporučeného postupu.
+
+### 5. Pracovní neschopnost a Potvrzení
+*   **Funkce:** Generování podkladů pro ČSSZ a zaměstnavatele na základě diagnózy a prognózy.
+
+---
+
+## 🚀 Klíčové Funkce Aplikace
 
 ### 🎙️ Inteligentní Zpracování Hlasu
-*   **Nahrávání a Upload:** Možnost nahrávat konzultace přímo v prohlížeči nebo nahrát existující soubory (WAV, MP3, M4A).
-*   **Pokročilý Přepis:** Využívá model `gemini-2.5-flash` pro přesný přepis češtiny s lékařskou terminologií.
-*   **Diarizace Mluvčích:** Automaticky rozlišuje řeč mezi **Lékařem** a **Pacientem**.
-*   **Časové Značky:** Každý segment textu je synchronizován s audiem.
+*   **Diarizace Mluvčích:** Automatické rozlišení řeči mezi **Lékařem** a **Pacientem**.
+*   **Multimodální Vstup:** Podpora nahrávání v reálném čase i uploadu existujících souborů (WAV, MP3, M4A).
+*   **Karaoke Mód:** Interaktivní přehrávání, kdy kliknutí na text v editoru přeskočí na přesný čas v audiu.
 
-### 📝 Automatizace Dokumentace
-*   **SOAP Zprávy:** Automaticky generuje strukturovaný výstup:
-    *   **S**ubjektivní (Anamnéza)
-    *   **O**bjektivní (Nález)
-    *   **A**ssessment (Hodnocení/Diagnóza)
-    *   **P**lán (Terapie)
-*   **Extrakce Entit:** Detekuje a kategorizuje symptomy, medikaci, diagnózy a osobní údaje (PII).
+### 🧠 AI Analýza (Google Gemini)
+*   **Medical Reasoning:** Model `gemini-2.5-flash` trénovaný na pochopení lékařského kontextu.
+*   **Strukturovaná Data:** Automatická extrakce entit:
+    *   **Diagnózy** (návrh ICD-10 kódů)
+    *   **Medikace** (dávkování, interakce)
+    *   **Symptomy**
+    *   **Osobní údaje** (PII)
 
-### ✍️ Interaktivní Práce s Textem
-*   **Smart Editor:** Rich-text editor (postavený na Tiptap) s funkcemi inspirovanými aplikací Notion ("/" příkazy, bublinové menu).
-*   **Synchronizované Přehrávání:** Kliknutím na text se audio přehrávač přesune na přesný čas (funkce karaoke).
-*   **AI Korektura:** Jedním kliknutím opraví gramatiku a překlepy v celém dokumentu.
+### ✍️ WYSIWYG Editor
+*   Plnohodnotný textový editor (postavený na Tiptap).
+*   Možnost manuálních úprav vygenerovaného textu před finalizací.
+*   Export do PDF.
 
-### 🧠 AI Asistent (Reasoning)
-*   **Kontextový Chat:** Integrovaný chatbot využívající model `gemini-3-pro-preview` s funkcí **Thinking Mode**. Lékař se může doptávat na detaily z vyšetření (např. *"Zmínil pacient alergie?"*) a AI odpovídá na základě hluboké analýzy kontextu přepisu.
+---
 
 ## 🛠️ Technický Stack
 
-*   **Frontend:** React 18, TypeScript
-*   **Styling:** Tailwind CSS, Lucide React (ikony)
+*   **Frontend:** React 18, TypeScript, Tailwind CSS
 *   **AI Engine:** Google Gen AI SDK (`@google/genai`)
-*   **Editor:** Tiptap (Headless WYSIWYG)
-*   **Build:** Native ES Modules via `esm.sh` (No-build setup)
+*   **Audio:** Web Audio API (MediaRecorder)
+*   **Editor:** Tiptap Headless Editor
+*   **Architektura:** Client-side SPA (Single Page Application) bez nutnosti backendu pro zpracování audia (vše přes API).
 
 ## 📦 Instalace a Spuštění
 
-Projekt je koncipován jako Single Page Application běžící přímo v prohlížeči.
-
-1.  **Stáhněte repozitář.**
-2.  **Nastavení API Klíče:**
+1.  **Klonování repozitáře:**
+    ```bash
+    git clone [url-repozitare]
+    ```
+2.  **Konfigurace:**
     *   Aplikace vyžaduje API klíč pro Google Gemini.
-    *   V aktuální verzi aplikace očekává klíč v `process.env.API_KEY`. Pro lokální spuštění si zajistěte, že je tento klíč dostupný (např. úpravou `services/geminiService.ts` pro dev účely nebo použitím prostředí, které env vars injektuje).
+    *   Nastavte proměnnou prostředí `API_KEY` v `services/geminiService.ts` nebo použijte `.env` soubor (dle vašeho build procesu).
 3.  **Spuštění:**
-    *   Otevřete složku projektu pomocí lokálního serveru (kvůli CORS a ES modulům).
-    *   Například pomocí `npx serve` nebo rozšíření "Live Server" ve VS Code.
+    *   Otevřete v prohlížeči přes lokální server (např. `Live Server` ve VS Code nebo `npx serve`).
 
-## 📄 Struktura Projektu
+## ⚠️ Upozornění (Disclaimer)
 
-*   `App.tsx` - Hlavní orchestrátor aplikace a stavů.
-*   `services/geminiService.ts` - Vrstva pro komunikaci s AI modely (Prompty, JSON parsing).
-*   `components/TranscriptEditor.tsx` - Komponenta editoru a přehrávače.
-*   `components/AnalysisDisplay.tsx` - Vizualizace analýzy, entit a chat s asistentem.
-*   `components/AudioRecorder.tsx` - Rozhraní pro nahrávání.
-
-## ⚠️ Upozornění
-
-MedVoice AI slouží jako asistenční nástroj pro zefektivnění práce lékaře. Veškeré výstupy generované umělou inteligencí musí být před uložením do zdravotnické dokumentace zkontrolovány a validovány kvalifikovaným zdravotníkem.
-
----
-*Vyvinuto s důrazem na efektivitu a bezpečnost v rámci projektu MediAI MVP.*
+*Aplikace MedVoice AI slouží jako podpůrný nástroj pro zdravotnické pracovníky. Výstupy z umělé inteligence musí být vždy zkontrolovány a validovány lékařem před vložením do oficiální zdravotnické dokumentace (NIS). Poskytovatel nenese odpovědnost za případné nepřesnosti v automatickém přepisu.*

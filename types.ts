@@ -1,3 +1,4 @@
+
 export enum AppState {
   IDLE = 'IDLE',
   RECORDING = 'RECORDING',
@@ -7,6 +8,16 @@ export enum AppState {
   ERROR = 'ERROR'
 }
 
+export enum ReportType {
+  AMBULANTNI_ZAZNAM = 'AMBULANTNI_ZAZNAM', // Default SOAP
+  VYPIS = 'VYPIS',
+  KONZILIUM = 'KONZILIUM',
+  ZADANKA = 'ZADANKA',
+  PN = 'PN',
+  POTVRZENI = 'POTVRZENI',
+  HOSPITALIZACE = 'HOSPITALIZACE'
+}
+
 export interface MedicalEntity {
   category: 'SYMPTOM' | 'MEDICATION' | 'DIAGNOSIS' | 'PII' | 'OTHER';
   text: string;
@@ -14,11 +25,15 @@ export interface MedicalEntity {
 }
 
 export interface StructuredReport {
-  subjective: string;
-  objective: string;
-  assessment: string;
-  plan: string;
-  summary: string;
+  reportType?: ReportType;
+  // Standard SOAP fields (used for AMBULANTNI_ZAZNAM)
+  subjective?: string;
+  objective?: string;
+  assessment?: string;
+  plan?: string;
+  summary?: string;
+  // Fallback for other document types (Single text blob)
+  content?: string;
 }
 
 export interface TranscriptSegment {

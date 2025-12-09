@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { MedicalEntity, StructuredReport, TranscriptSegment } from "../types";
+import { MedicalEntity, StructuredReport, TranscriptSegment, ReportType } from "../types";
 
 const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
@@ -181,42 +182,270 @@ export const extractEntities = async (transcript: string): Promise<MedicalEntity
 };
 
 /**
- * 3. Generate Structured Report (SOAP Note)
+ * 3. Generate Structured Report based on Type
  */
-export const generateMedicalReport = async (transcript: string): Promise<StructuredReport> => {
+const REPORT_PROMPTS: Record<string, string> = {
+  [ReportType.VYPIS]: `Vytvoř "VÝPIS ZE ZDRAVOTNICKÉ DOKUMENTACE".
+Formát musí vypadat přesně takto:
+
+VÝPIS ZE ZDRAVOTNICKÉ DOKUMENTACE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PACIENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Jméno: [Doplň z textu nebo nevyplněno]
+RČ: [Doplň z textu nebo nevyplněno]
+Registrován od: [Doplň z textu nebo nevyplněno]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OSOBNÍ ANAMNÉZA (SOUHRN)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[AI agreguje z historie, pokud je zmíněna]
+
+Chronická onemocnění:
+- [ICD-10] - [název]
+(pokud není zmíněno, napiš "Bez záznamu v přepisu")
+
+Operace:
+- [datum/rok] - [typ]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AKTUÁLNÍ STAV
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Trvale užívané léky:
+[Seznam léků z přepisu]
+
+Alergie: [Seznam]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRŮBĚH LÉČBY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Shrnutí aktuální návštěvy]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ZÁVĚR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Shrnutí aktuálního zdravotního stavu]
+
+Datum: [Dnešní datum]
+Lékař: [MUDr. Jan Novák]`,
+
+  [ReportType.KONZILIUM]: `Vytvoř "KONZILIÁRNÍ ZPRÁVU / ŽÁDOST O KONZILIUM".
+Formát:
+
+KONZILIÁRNÍ ZPRÁVA / ŽÁDOST O KONZILIUM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ODESÍLAJÍCÍ LÉKAŘ: MUDr. Jan Novák
+Datum: [Dnešní datum]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PACIENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Jméno: [Doplň]
+Věk: [Doplň]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DŮVOD KONZILIA (OTÁZKA)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Extrahuj klíčovou otázku nebo důvod odeslání]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ANAMNÉZA A NYNĚJŠÍ STAV
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Souhrn relevantní pro odborníka]
+
+Hlavní diagnózy: [ICD-10]
+
+Aktuální medikace: [Seznam]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DOSAVADNÍ VYŠETŘENÍ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Laboratorní, zobrazovací metody zmíněné v textu]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NALÉHAVOST: [Odhadni: Akutní / Urgentní / Plánované]`,
+
+  [ReportType.ZADANKA]: `Vytvoř "ŽÁDANKU NA VYŠETŘENÍ".
+Formát:
+
+ŽÁDANKA NA LABORATORNÍ/ZOBRAZOVACÍ VYŠETŘENÍ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PACIENT: [Jméno]
+RČ: [Doplň]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYP VYŠETŘENÍ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Zaškrtni nebo vypiš typ: Laboratorní, RTG, UZ, CT, MR...]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+POŽADOVANÉ VYŠETŘENÍ (kódy VZP)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Navrhni kódy výkonů pokud je lze odvodit, jinak vypiš slovně]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KLINICKÁ OTÁZKA / INDIKACE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Diagnóza: [ICD-10] - [Název]
+Důvod: [Vysvětlení]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NALÉHAVOST: [Akutně / Urgentně / Plánovaně]`,
+
+  [ReportType.PN]: `Vytvoř "ROZHODNUTÍ O DOČASNÉ PRACOVNÍ NESCHOPNOSTI (PN)".
+Formát:
+
+ROZHODNUTÍ O DOČASNÉ PRACOVNÍ NESCHOPNOSTI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ZAMĚSTNANEC: [Jméno]
+RČ: [Doplň]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRACOVNÍ NESCHOPNOST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Typ: [Nová PN / Prodloužení / Ukončení]
+
+Trvání:
+Od: [Datum začátku]
+Do: [Odhad datum konce]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DIAGNÓZA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ICD-10] - [Název]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REŽIM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Domácí / Ambulantní]
+Vycházky: [Ano/Ne]
+Kontrola: [Datum kontroly]`,
+
+  [ReportType.POTVRZENI]: `Vytvoř "POTVRZENÍ O NEMOCI".
+Formát:
+
+POTVRZENÍ O NEMOCI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Potvrzuji, že
+[Jméno], nar. [Datum]
+
+byl/a dne [Dnešní datum] vyšetřen/a pro akutní onemocnění
+a nebyl/a způsobilý/á k práci/škole.
+
+Doporučuji vyloučení z kolektivu / domácí režim.
+
+V [Město] dne [Dnešní datum]
+MUDr. Jan Novák`,
+
+  [ReportType.HOSPITALIZACE]: `Vytvoř "DOPORUČENÍ K HOSPITALIZACI".
+Formát:
+
+DOPORUČENÍ K HOSPITALIZACI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRO ODDĚLENÍ: [Navrhni vhodné oddělení]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PACIENT: [Jméno]
+RČ: [Doplň]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DŮVOD K HOSPITALIZACI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Hlavní důvod]
+Diagnóza: [ICD-10]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ANAMNÉZA (SOUHRN)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Stručný souhrn]
+Medikace: [Seznam]
+Alergie: [Seznam]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AKTUÁLNÍ STAV A NÁLEZY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Popis stavu, vitální funkce]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NALÉHAVOST: [Akutní / Urgentní / Plánovaná]`
+};
+
+export const generateMedicalReport = async (transcript: string, type: ReportType = ReportType.AMBULANTNI_ZAZNAM): Promise<StructuredReport> => {
   if (!apiKey || !transcript) throw new Error("Missing input");
 
-  const prompt = `Na základě následujícího přepisu konzultace vygeneruj strukturovanou lékařskou zprávu ve formátu SOAP (Subjektivní, Objektivní, Hodnocení, Plán) a stručné shrnutí. Výstup musí být v češtině, profesionálním lékařském stylu.`;
+  // 1. STANDARD SOAP REPORT
+  if (type === ReportType.AMBULANTNI_ZAZNAM) {
+    const prompt = `Na základě následujícího přepisu konzultace vygeneruj "DENNÍ AMBULANTNÍ ZÁZNAM" ve formátu SOAP (Subjektivní, Objektivní, Hodnocení, Plán) a stručné shrnutí. 
+    
+    Výstup musí být v češtině. Zahrň navrhované ICD-10 kódy do sekce Assessment.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: {
-      parts: [
-        { text: prompt },
-        { text: `TRANSCRIPT:\n${transcript}` }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          subjective: { type: Type.STRING, description: "Subjektivní potíže pacienta, anamnéza" },
-          objective: { type: Type.STRING, description: "Objektivní nález, měření, pozorování" },
-          assessment: { type: Type.STRING, description: "Zhodnocení stavu, diagnóza" },
-          plan: { type: Type.STRING, description: "Terapeutický plán, medikace, další postup" },
-          summary: { type: Type.STRING, description: "Krátké shrnutí pro rychlý přehled" }
-        },
-        required: ["subjective", "objective", "assessment", "plan", "summary"]
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: {
+        parts: [
+          { text: prompt },
+          { text: `TRANSCRIPT:\n${transcript}` }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            subjective: { type: Type.STRING, description: "Subjektivní potíže pacienta, anamnéza" },
+            objective: { type: Type.STRING, description: "Objektivní nález, měření, pozorování" },
+            assessment: { type: Type.STRING, description: "Zhodnocení stavu, diagnóza a kód ICD-10" },
+            plan: { type: Type.STRING, description: "Terapeutický plán, recepty, režim, kontrola" },
+            summary: { type: Type.STRING, description: "Krátké shrnutí" }
+          },
+          required: ["subjective", "objective", "assessment", "plan", "summary"]
+        }
       }
-    }
-  });
+    });
 
-  return cleanAndParseJSON<StructuredReport>(response.text, {
-      subjective: "",
-      objective: "",
-      assessment: "",
-      plan: "",
-      summary: ""
-  });
+    const result = cleanAndParseJSON<StructuredReport>(response.text, {
+        subjective: "",
+        objective: "",
+        assessment: "",
+        plan: "",
+        summary: ""
+    });
+    return { ...result, reportType: type };
+  } 
+  
+  // 2. SPECIALIZED REPORTS (Markdown/Text based)
+  else {
+    const promptTemplate = REPORT_PROMPTS[type] || "";
+    const prompt = `${promptTemplate}
+    
+    Vycházej POUZE z informací v přepisu. Pokud informace chybí, použij "[Doplň]" nebo "[?]"
+    Výstup vrať jako prostý text uvnitř JSON objektu pod klíčem 'content'.`;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: {
+          parts: [
+            { text: prompt },
+            { text: `TRANSCRIPT:\n${transcript}` }
+          ]
+        },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    content: { type: Type.STRING, description: "The full text content of the medical document" }
+                },
+                required: ["content"]
+            }
+        }
+    });
+
+    const result = cleanAndParseJSON<{content: string}>(response.text, { content: "" });
+    return { 
+        reportType: type,
+        content: result.content
+    };
+  }
 };

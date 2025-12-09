@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
 import { TranscriptEditor } from './components/TranscriptEditor';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
-import { AppState, AudioFile, ProcessingResult, StructuredReport } from './types';
+import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType } from './types';
 import { transcribeAudio, extractEntities, generateMedicalReport } from './services/geminiService';
 import { RotateCcw } from 'lucide-react';
 
@@ -15,9 +16,10 @@ const App: React.FC = () => {
     rawTranscript: '',
     segments: [],
     entities: [],
-    report: { subjective: '', objective: '', assessment: '', plan: '', summary: '' }
+    report: { subjective: '', objective: '', assessment: '', plan: '', summary: '', reportType: ReportType.AMBULANTNI_ZAZNAM }
   });
   const [progress, setProgress] = useState<string>("");
+  const [isRegeneratingReport, setIsRegeneratingReport] = useState(false);
 
   const handleAudioReady = async (file: AudioFile) => {
     setAudioFile(file);
@@ -44,7 +46,7 @@ const App: React.FC = () => {
       
       const [entities, report] = await Promise.all([
         extractEntities(text),
-        generateMedicalReport(text)
+        generateMedicalReport(text, ReportType.AMBULANTNI_ZAZNAM)
       ]);
 
       setResult(prev => ({
@@ -78,6 +80,24 @@ const App: React.FC = () => {
     }));
   };
 
+  const handleRegenerateReport = async (type: ReportType) => {
+      if (!result.rawTranscript) return;
+      
+      setIsRegeneratingReport(true);
+      try {
+          const newReport = await generateMedicalReport(result.rawTranscript, type);
+          setResult(prev => ({
+              ...prev,
+              report: newReport
+          }));
+      } catch (error) {
+          console.error("Failed to regenerate report", error);
+          alert("Nepodařilo se vygenerovat nový typ dokumentu.");
+      } finally {
+          setIsRegeneratingReport(false);
+      }
+  };
+
   const reset = () => {
     // Revoke old URL to avoid memory leaks
     if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -89,7 +109,7 @@ const App: React.FC = () => {
         rawTranscript: '',
         segments: [],
         entities: [],
-        report: { subjective: '', objective: '', assessment: '', plan: '', summary: '' }
+        report: { subjective: '', objective: '', assessment: '', plan: '', summary: '', reportType: ReportType.AMBULANTNI_ZAZNAM }
     });
   };
 
@@ -145,6 +165,8 @@ const App: React.FC = () => {
                         entities={result.entities} 
                         report={result.report}
                         onReportChange={handleReportUpdate}
+                        onRegenerateReport={handleRegenerateReport}
+                        isRegenerating={isRegeneratingReport}
                     />
                  </div>
              </div>

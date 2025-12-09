@@ -51,8 +51,9 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
 
   // Sync editor content if transcript changes externally
   useEffect(() => {
-    if (editor && transcript !== editor.getText()) {
+    if (editor && transcript !== editor.getHTML() && transcript !== editor.getText()) {
         if (!isEditing) {
+             // Try to be smart: if transcript looks like HTML, use it, otherwise use text
              editor.commands.setContent(transcript);
         }
     }
@@ -114,13 +115,12 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
       if (isEditing) {
           // Saving changes
           if (editor) {
-              const text = editor.getText(); // Get plain text for analysis
-              onTranscriptChange(text);
+              const html = editor.getHTML(); // Get HTML to preserve formatting
+              onTranscriptChange(html);
           }
       } else {
           // Entering edit mode
           if (editor) {
-              // Ensure editor has latest content before editing
               editor.commands.setContent(transcript);
           }
       }
@@ -135,7 +135,10 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
 
   const renderSegments = () => {
     // If we have structured segments, use them for interactive playback
-    if (segments && segments.length > 0) {
+    // BUT only if we aren't likely dealing with a heavily edited, desynchronized HTML blob
+    const isHtml = transcript.trim().startsWith('<');
+    
+    if (!isHtml && segments && segments.length > 0) {
         return segments.map((seg, idx) => {
             const isActive = currentTime >= seg.start && currentTime <= seg.end;
             const isDoctor = seg.speaker === 'Lékař';
@@ -168,19 +171,13 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
         });
     }
 
-    // Fallback parsing if segments are missing
-    return transcript.split('\n').map((line, idx) => {
-      const cleanLine = line.replace(/\*\*/g, '').trim(); 
-      if (!cleanLine) return <div key={idx} className="h-2"></div>;
-
-      const isDoctor = cleanLine.startsWith('Lékař:') || cleanLine.startsWith('Lékař');
-      
-      return (
-        <div key={idx} className={`mb-2 p-2 rounded ${isDoctor ? 'bg-white' : 'bg-slate-100'}`}>
-            {line}
-        </div>
-      );
-    });
+    // Fallback: If it's HTML (edited) or segments are missing, just render the content
+    return (
+        <div 
+            className="prose prose-sm max-w-none text-slate-800"
+            dangerouslySetInnerHTML={{ __html: transcript }}
+        />
+    );
   };
 
   return (

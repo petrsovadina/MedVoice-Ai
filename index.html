@@ -77,7 +77,37 @@
         color: #0284c7; /* primary-600 */
       }
 
-      /* Bubble Menu Animation */
+      /* Bubble Menu Styles */
+      .bubble-menu {
+        display: flex;
+        background-color: #fff;
+        padding: 0.2rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+      }
+      .bubble-menu button {
+        border: none;
+        background: none;
+        color: #64748b;
+        font-size: 0.85rem;
+        font-weight: 500;
+        padding: 0.4rem 0.6rem;
+        border-radius: 0.3rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+      .bubble-menu button:hover {
+        background-color: #f1f5f9;
+        color: #0f172a;
+      }
+      .bubble-menu button.is-active {
+        background-color: #e0f2fe;
+        color: #0284c7;
+      }
+
       .tippy-box {
         background-color: transparent !important;
         box-shadow: none !important;
