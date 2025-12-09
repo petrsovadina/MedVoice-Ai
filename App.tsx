@@ -3,7 +3,7 @@ import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
 import { TranscriptEditor } from './components/TranscriptEditor';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
-import { AppState, AudioFile, ProcessingResult } from './types';
+import { AppState, AudioFile, ProcessingResult, StructuredReport } from './types';
 import { transcribeAudio, extractEntities, generateMedicalReport } from './services/geminiService';
 import { RotateCcw } from 'lucide-react';
 
@@ -61,9 +61,21 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTranscriptChange = (text: string) => {
-    setResult(prev => ({ ...prev, rawTranscript: text }));
-    // In a real app, we might want to re-trigger analysis on debounce here
+  const handleTranscriptUpdate = (newTranscript: string) => {
+    setResult(prev => ({
+        ...prev,
+        rawTranscript: newTranscript,
+        // Poznámka: Při manuální editaci textu se segments mohou rozcházet. 
+        // Pro jednoduchost zde neměníme segments, což může ovlivnit karaoke mód,
+        // ale text bude aktuální.
+    }));
+  };
+
+  const handleReportUpdate = (newReport: StructuredReport) => {
+    setResult(prev => ({
+        ...prev,
+        report: newReport
+    }));
   };
 
   const reset = () => {
@@ -123,7 +135,7 @@ const App: React.FC = () => {
                         transcript={result.rawTranscript}
                         segments={result.segments}
                         audioUrl={audioUrl}
-                        onChange={handleTranscriptChange} 
+                        onTranscriptChange={handleTranscriptUpdate}
                     />
                  </div>
 
@@ -132,7 +144,7 @@ const App: React.FC = () => {
                     <AnalysisDisplay 
                         entities={result.entities} 
                         report={result.report}
-                        rawTranscript={result.rawTranscript}
+                        onReportChange={handleReportUpdate}
                     />
                  </div>
              </div>

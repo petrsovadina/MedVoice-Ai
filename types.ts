@@ -40,8 +40,3 @@ export interface AudioFile {
   mimeType: string;
   name: string;
 }
-
-export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-}

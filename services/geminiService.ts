@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MedicalEntity, StructuredReport, ChatMessage, TranscriptSegment } from "../types";
+import { MedicalEntity, StructuredReport, TranscriptSegment } from "../types";
 
 const apiKey = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
@@ -19,6 +19,54 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+};
+
+/**
+ * Helper to safely parse JSON from LLM response
+ * Robustly handles markdown code blocks and surrounding text.
+ */
+const cleanAndParseJSON = <T>(text: string | undefined, fallback: T): T => {
+  if (!text) return fallback;
+  
+  try {
+    // 1. Attempt to extract from Markdown code blocks (most common LLM pattern)
+    // Matches ```json ... ``` or just ``` ... ```
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      return JSON.parse(codeBlockMatch[1]) as T;
+    }
+
+    // 2. Attempt to find the first valid JSON structure (Object or Array)
+    // This handles cases where the model adds "Here is the JSON:" prefix without code blocks
+    const firstBrace = text.indexOf('{');
+    const firstBracket = text.indexOf('[');
+    const lastBrace = text.lastIndexOf('}');
+    const lastBracket = text.lastIndexOf(']');
+
+    let start = -1;
+    let end = -1;
+
+    // Detect if Object or Array starts first
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+        start = firstBrace;
+        end = lastBrace;
+    } else if (firstBracket !== -1) {
+        start = firstBracket;
+        end = lastBracket;
+    }
+
+    if (start !== -1 && end !== -1 && end > start) {
+        const potentialJson = text.substring(start, end + 1);
+        return JSON.parse(potentialJson) as T;
+    }
+
+    // 3. Fallback: Try direct parse (unlikely to succeed if above failed, but worth a shot)
+    return JSON.parse(text) as T;
+
+  } catch (e) {
+    console.warn("JSON Parse Warning - attempting raw parse failed, returning fallback:", e);
+    return fallback;
+  }
 };
 
 /**
@@ -78,19 +126,16 @@ Vrať JSON pole objektů s touto strukturou:
     }
   });
 
-  try {
-    const segments: TranscriptSegment[] = JSON.parse(response.text || "[]");
-    
-    // Construct raw text from segments for backward compatibility and fallback display
-    const text = segments.map(s => `${s.speaker}: ${s.text}`).join('\n\n');
-    
-    return { text, segments };
-  } catch (e) {
-    console.error("Failed to parse transcription json", e);
-    // Fallback: If JSON parsing fails (unlikely with schema), return empty structure or try to extract text manually
-    // Ideally, we would have a fallback non-JSON prompt, but for now we assume success or fail hard
-    return { text: "Chyba při zpracování přepisu.", segments: [] };
+  const segments = cleanAndParseJSON<TranscriptSegment[]>(response.text, []);
+  
+  if (segments.length === 0) {
+      return { text: "Nepodařilo se zpracovat přepis nebo je záznam prázdný.", segments: [] };
   }
+
+  // Construct raw text from segments for backward compatibility and fallback display
+  const text = segments.map(s => `${s.speaker}: ${s.text}`).join('\n\n');
+  
+  return { text, segments };
 };
 
 /**
@@ -132,12 +177,7 @@ export const extractEntities = async (transcript: string): Promise<MedicalEntity
     }
   });
 
-  try {
-    return JSON.parse(response.text || "[]");
-  } catch (e) {
-    console.error("Failed to parse entities", e);
-    return [];
-  }
+  return cleanAndParseJSON<MedicalEntity[]>(response.text, []);
 };
 
 /**
@@ -172,75 +212,11 @@ export const generateMedicalReport = async (transcript: string): Promise<Structu
     }
   });
 
-  try {
-    return JSON.parse(response.text || "{}");
-  } catch (e) {
-    console.error("Failed to parse report", e);
-    return {
+  return cleanAndParseJSON<StructuredReport>(response.text, {
       subjective: "",
       objective: "",
       assessment: "",
       plan: "",
       summary: ""
-    };
-  }
-};
-
-/**
- * 4. AI Polish / Correction (Uses Gemini Flash for speed)
- */
-export const correctTranscript = async (transcript: string): Promise<string> => {
-  if (!apiKey || !transcript) return transcript;
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `Jsi lékařský editor. Oprav v následujícím textu gramatiku, překlepy a zkontroluj správnost lékařské terminologie. 
-    
-    DŮLEŽITÉ: 
-    - Zachovej formátování diarizace (neměň "Lékař:" a "Pacient:").
-    - Zachovej strukturu řádků.
-    - Neměň význam textu, pouze opravuj chyby.
-    
-    Text k opravě:
-    ${transcript}`
   });
-
-  return response.text || transcript;
-};
-
-/**
- * 5. Chat with Context (Uses Gemini 3 Pro with Thinking for complex reasoning)
- */
-export const askMedicalAssistant = async (transcript: string, history: ChatMessage[], question: string): Promise<string> => {
-  if (!apiKey) throw new Error("API Key missing");
-
-  // Construct context-aware prompt
-  const prompt = `Jsi expertní lékařský asistent. Tvým úkolem je odpovídat na dotazy lékaře POUZE na základě níže uvedeného přepisu konzultace.
-  
-  Využij své schopnosti hlubokého uvažování (thinking) k analýze kontextu, souvislostí a nepřímých informací v textu.
-  
-  Pravidla:
-  1. Odpovídej stručně, přesně a profesionálně česky.
-  2. Pokud informace v přepisu chybí, jasně to uveď.
-  3. Cituj konkrétní části přepisu, pokud je to relevantní pro potvrzení tvého tvrzení.
-  
-  PŘEPIS KONZULTACE:
-  ${transcript}
-  
-  HISTORIE CHATU:
-  ${history.map(h => `${h.role === 'user' ? 'Lékař' : 'AI'}: ${h.text}`).join('\n')}
-  
-  Lékař: ${question}`;
-
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview", 
-    contents: prompt,
-    config: {
-      thinkingConfig: {
-        thinkingBudget: 32768
-      }
-    }
-  });
-
-  return response.text || "Omlouvám se, ale nemohu na tento dotaz odpovědět.";
 };

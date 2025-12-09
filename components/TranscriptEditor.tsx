@@ -1,23 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wand2, Loader2, Check, Eye, Edit3, Play, Pause } from 'lucide-react';
-import { correctTranscript } from '../services/geminiService';
-import { TranscriptSegment } from '../types';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
+import { Eye, Edit2, Check, Play, Pause } from 'lucide-react';
+import { TranscriptSegment } from '../types';
 
 interface TranscriptEditorProps {
   transcript: string;
   segments?: TranscriptSegment[];
-  onChange: (text: string) => void;
   audioUrl?: string | null;
+  onTranscriptChange: (newTranscript: string) => void;
 }
 
-export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ transcript, segments = [], onChange, audioUrl }) => {
-  const [isPolishing, setIsPolishing] = useState(false);
-  const [justPolished, setJustPolished] = useState(false);
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('preview');
-  
+export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ 
+    transcript, 
+    segments = [], 
+    audioUrl,
+    onTranscriptChange 
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+
   // Audio Player State
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -25,52 +26,30 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ transcript, 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Tiptap Editor
+  // Editor Setup
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2],
-        },
-      }),
-      Placeholder.configure({
-        placeholder: 'Začněte psát nebo stiskněte "/" pro menu...',
-        emptyEditorClass: 'is-editor-empty',
-      }),
-    ],
+    extensions: [StarterKit],
     content: transcript,
     editorProps: {
         attributes: {
-            class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[300px] max-w-none text-slate-800 leading-relaxed',
+            class: 'prose prose-sm sm:prose-base lg:prose-lg xl:prose-2xl m-5 focus:outline-none min-h-[300px]',
         },
     },
     onUpdate: ({ editor }) => {
-        const text = editor.getText({ blockSeparator: "\n\n" });
-        onChange(text);
-    },
+        // We could autosave here, but for now we save on "Done" click
+    }
   });
 
-  // Sync external transcript changes to editor
+  // Sync editor content if transcript changes externally
   useEffect(() => {
-    if (editor && transcript && Math.abs(editor.getText().length - transcript.length) > 10) {
-        // Prevent clearing content if it's just a small sync issue or cursor movement
-        const currentContent = editor.getText({ blockSeparator: "\n\n" });
-        if (currentContent !== transcript) {
-             // Only update if difference is significant to avoid cursor jumps
+    if (editor && transcript !== editor.getText()) {
+        // Only update if significantly different to avoid cursor jumps, 
+        // strictly speaking for this app structure, we update when entering edit mode mostly.
+        if (!isEditing) {
              editor.commands.setContent(transcript);
         }
     }
-  }, [transcript, editor]);
-
-  // Automatically default to 'edit' if empty or no segments, otherwise 'preview'
-  useEffect(() => {
-    if (!transcript) {
-        setViewMode('edit');
-    } else if (segments.length > 0 && viewMode === 'edit') {
-        // Only switch if we just got segments, but be careful not to override user choice too aggressively
-        // For now, we respect the user unless it's the initial load
-    }
-  }, [transcript, segments.length]);
+  }, [transcript, editor, isEditing]);
 
   // Audio Event Handlers
   useEffect(() => {
@@ -94,13 +73,13 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ transcript, 
 
   // Auto-scroll to active segment
   useEffect(() => {
-      if (viewMode === 'preview' && isPlaying) {
+      if (isPlaying && !isEditing) {
           const activeIndex = segments.findIndex(s => currentTime >= s.start && currentTime <= s.end);
           if (activeIndex !== -1 && segmentRefs.current[activeIndex]) {
               segmentRefs.current[activeIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
       }
-  }, [currentTime, isPlaying, segments, viewMode]);
+  }, [currentTime, isPlaying, segments, isEditing]);
 
 
   const togglePlay = () => {
@@ -124,31 +103,29 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ transcript, 
       }
   };
 
+  const toggleEditMode = () => {
+      if (isEditing) {
+          // Saving changes
+          if (editor) {
+              const text = editor.getText(); // Get plain text for analysis
+              onTranscriptChange(text);
+          }
+      } else {
+          // Entering edit mode
+          if (editor) {
+              editor.commands.setContent(transcript);
+          }
+      }
+      setIsEditing(!isEditing);
+  };
+
   const formatTime = (time: number) => {
       const mins = Math.floor(time / 60);
       const secs = Math.floor(time % 60);
       return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Full Document Polish
-  const handleAiPolish = async () => {
-    setIsPolishing(true);
-    try {
-      const polishedText = await correctTranscript(transcript);
-      if (editor) {
-          editor.commands.setContent(polishedText);
-      }
-      onChange(polishedText);
-      setJustPolished(true);
-      setTimeout(() => setJustPolished(false), 3000);
-    } catch (error) {
-      console.error("Polish failed", error);
-    } finally {
-      setIsPolishing(false);
-    }
-  };
-
-  const renderPreview = () => {
+  const renderSegments = () => {
     // If we have structured segments, use them for interactive playback
     if (segments && segments.length > 0) {
         return segments.map((seg, idx) => {
@@ -208,39 +185,33 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ transcript, 
                 <h3 className="font-bold text-slate-700 ml-2">Přepis Záznamu</h3>
                 <div className="flex bg-slate-200 rounded-lg p-0.5 ml-4">
                     <button
-                        onClick={() => setViewMode('preview')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${viewMode === 'preview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => isEditing && toggleEditMode()}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${!isEditing ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Eye size={12} /> Číst
                     </button>
                     <button
-                        onClick={() => setViewMode('edit')}
-                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${viewMode === 'edit' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => !isEditing && toggleEditMode()}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${isEditing ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        <Edit3 size={12} /> Upravit
+                        <Edit2 size={12} /> Upravit
                     </button>
                 </div>
             </div>
-            
-            <button 
-            onClick={handleAiPolish}
-            disabled={isPolishing || transcript.length === 0}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
-                ${justPolished 
-                ? 'bg-green-100 text-green-700 border border-green-200' 
-                : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
-                }
-                disabled:opacity-50 disabled:cursor-not-allowed
-            `}
-            title="Opravit celý dokument"
-            >
-            {isPolishing ? <Loader2 size={14} className="animate-spin" /> : justPolished ? <Check size={14} /> : <Wand2 size={14} />}
-            {isPolishing ? 'Opravuji...' : justPolished ? 'Hotovo' : 'AI Korektura'}
-            </button>
+
+            {/* Edit Mode Save Button */}
+            {isEditing && (
+                 <button 
+                    onClick={toggleEditMode}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md text-xs font-medium transition-colors shadow-sm"
+                 >
+                    <Check size={14} /> Uložit úpravy
+                 </button>
+            )}
         </div>
 
-        {/* Audio Player Bar */}
-        {audioUrl && (
+        {/* Audio Player Bar - Only visible in Read Mode or if we want it during edit (optional, usually hide during edit to focus) */}
+        {!isEditing && audioUrl && (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200">
                 <audio ref={audioRef} src={audioUrl} className="hidden" />
                 <button 
@@ -270,32 +241,23 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({ transcript, 
       
       {/* Content Area */}
       <div className="flex-1 relative overflow-hidden bg-white">
-        {viewMode === 'edit' && editor ? (
-             <div className="h-full w-full overflow-y-auto cursor-text text-sm">
-                 <EditorContent editor={editor} className="h-full p-8 outline-none" />
+        {isEditing ? (
+             <div className="h-full overflow-y-auto p-4">
+                <EditorContent editor={editor} />
              </div>
         ) : (
             <div className="w-full h-full p-6 overflow-y-auto bg-slate-50/30 scroll-smooth">
-                {transcript.trim() ? renderPreview() : (
+                {transcript.trim() ? renderSegments() : (
                     <div className="flex flex-col items-center justify-center h-full text-slate-400 text-sm">
                         <p>Zatím žádný přepis.</p>
                     </div>
                 )}
             </div>
         )}
-
-        {isPolishing && (
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
-             <div className="bg-white px-5 py-3 rounded-full shadow-xl border border-slate-200 flex items-center gap-3 animate-bounce-subtle">
-                <Loader2 size={18} className="animate-spin text-primary-600" />
-                <span className="text-sm font-medium text-slate-700">Gemini vylepšuje text...</span>
-             </div>
-          </div>
-        )}
       </div>
       
       <div className="p-2 bg-slate-50 border-t border-slate-200 text-right">
-        <span className="text-xs text-slate-400 mr-2">{editor?.storage.characterCount?.characters() || transcript.length} znaků</span>
+        <span className="text-xs text-slate-400 mr-2">{transcript.length} znaků</span>
       </div>
     </div>
   );

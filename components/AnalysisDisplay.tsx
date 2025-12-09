@@ -1,54 +1,46 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { MedicalEntity, StructuredReport, ChatMessage } from '../types';
-import { FileText, Tags, Activity, Shield, Pill, Stethoscope, Copy, Check, Download, Bot, Send, User, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MedicalEntity, StructuredReport } from '../types';
+import { FileText, Tags, Activity, Shield, Pill, Stethoscope, Copy, Check, Download, Edit2 } from 'lucide-react';
 import { jsPDF } from "jspdf";
-import { askMedicalAssistant } from '../services/geminiService';
 
 interface AnalysisDisplayProps {
   entities: MedicalEntity[];
   report: StructuredReport;
-  rawTranscript?: string; // Needed for Chat context
+  onReportChange: (report: StructuredReport) => void;
 }
 
-export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ entities, report, rawTranscript = "" }) => {
-  const [activeTab, setActiveTab] = useState<'report' | 'entities' | 'chat'>('report');
+export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ entities, report, onReportChange }) => {
+  const [activeTab, setActiveTab] = useState<'report' | 'entities'>('report');
   const [copied, setCopied] = useState<string | null>(null);
-  
-  // Chat State
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedReport, setEditedReport] = useState<StructuredReport>(report);
 
+  // Sync local state when prop changes
   useEffect(() => {
-    if (activeTab === 'chat' && chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [chatHistory, activeTab]);
-
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || !rawTranscript) return;
-
-    const newUserMsg: ChatMessage = { role: 'user', text: chatInput };
-    setChatHistory(prev => [...prev, newUserMsg]);
-    setChatInput("");
-    setIsChatLoading(true);
-
-    try {
-      const responseText = await askMedicalAssistant(rawTranscript, chatHistory, newUserMsg.text);
-      setChatHistory(prev => [...prev, { role: 'model', text: responseText }]);
-    } catch (e) {
-      console.error(e);
-      setChatHistory(prev => [...prev, { role: 'model', text: "Omlouvám se, ale nastala chyba při komunikaci se serverem." }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  };
-
+    setEditedReport(report);
+  }, [report]);
+  
   const copyToClipboard = (text: string, section: string) => {
     navigator.clipboard.writeText(text);
     setCopied(section);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleSave = () => {
+    onReportChange(editedReport);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditedReport(report); // Revert
+    setIsEditing(false);
+  };
+
+  const handleFieldChange = (field: keyof StructuredReport, value: string) => {
+    setEditedReport(prev => ({
+        ...prev,
+        [field]: value
+    }));
   };
 
   const getEntityIcon = (category: string) => {
@@ -94,28 +86,51 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ entities, repo
         y += (splitText.length * 7) + 10;
     };
 
-    addSection("Subjektivně (S)", report.subjective);
-    addSection("Objektivně (O)", report.objective);
-    addSection("Hodnocení (A)", report.assessment);
-    addSection("Plán (P)", report.plan);
-    addSection("Shrnutí", report.summary);
+    // Use current state (editedReport) for PDF if editing, or confirmed report
+    const dataToPrint = isEditing ? editedReport : report;
+
+    addSection("Subjektivně (S)", dataToPrint.subjective);
+    addSection("Objektivně (O)", dataToPrint.objective);
+    addSection("Hodnocení (A)", dataToPrint.assessment);
+    addSection("Plán (P)", dataToPrint.plan);
+    addSection("Shrnutí", dataToPrint.summary);
 
     doc.save("lekarska_zprava.pdf");
   };
 
-  const ReportSection = ({ title, content, id }: { title: string, content: string, id: string }) => (
+  const ReportSection = ({ 
+      title, 
+      field,
+      content 
+  }: { 
+      title: string, 
+      field: keyof StructuredReport,
+      content: string 
+  }) => (
     <div className="mb-6 p-4 bg-white rounded-lg border border-slate-200 hover:border-primary-300 transition-colors group relative shadow-sm">
       <div className="flex justify-between items-start mb-2">
         <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{title}</h4>
-        <button 
-          onClick={() => copyToClipboard(content, id)}
-          className="text-slate-300 hover:text-primary-600 transition-colors opacity-0 group-hover:opacity-100"
-          title="Kopírovat sekci"
-        >
-          {copied === id ? <Check size={16} /> : <Copy size={16} />}
-        </button>
+        {!isEditing && (
+            <button 
+            onClick={() => copyToClipboard(content, field)}
+            className="text-slate-300 hover:text-primary-600 transition-colors opacity-0 group-hover:opacity-100"
+            title="Kopírovat sekci"
+            >
+            {copied === field ? <Check size={16} /> : <Copy size={16} />}
+            </button>
+        )}
       </div>
-      <p className="text-slate-900 whitespace-pre-wrap leading-relaxed">{content || "Žádná data."}</p>
+      
+      {isEditing ? (
+          <textarea
+            value={editedReport[field]}
+            onChange={(e) => handleFieldChange(field, e.target.value)}
+            className="w-full min-h-[100px] p-2 text-sm text-slate-900 border border-slate-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-y"
+            placeholder={`Zadejte ${title.toLowerCase()}...`}
+          />
+      ) : (
+          <p className="text-slate-900 whitespace-pre-wrap leading-relaxed">{content || "Žádná data."}</p>
+      )}
     </div>
   );
 
@@ -135,12 +150,6 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ entities, repo
         >
           <Tags size={18} /> Entity
         </button>
-        <button 
-          onClick={() => setActiveTab('chat')}
-          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'chat' ? 'border-primary-600 text-primary-700 bg-primary-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-        >
-          <Bot size={18} /> Asistent
-        </button>
       </div>
 
       {/* Content */}
@@ -150,30 +159,67 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ entities, repo
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg font-bold text-slate-800">SOAP Zpráva</h3>
                 <div className="flex gap-2">
-                    <button 
-                        onClick={downloadPDF}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md hover:bg-slate-50 text-slate-700 transition-colors shadow-sm"
-                    >
-                        <Download size={14} /> PDF
-                    </button>
-                    <button 
-                        onClick={() => copyToClipboard(`${report.subjective}\n${report.objective}\n${report.assessment}\n${report.plan}`, 'full')}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors shadow-sm"
-                    >
-                        {copied === 'full' ? <Check size={14} /> : <Copy size={14} />}
-                        Kopírovat vše
-                    </button>
+                    {/* Toggle Edit Mode */}
+                    {isEditing ? (
+                         <>
+                            <button 
+                                onClick={handleSave}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm"
+                            >
+                                <Check size={14} /> Uložit
+                            </button>
+                            <button 
+                                onClick={handleCancel}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md hover:bg-slate-50 text-slate-700 transition-colors shadow-sm"
+                            >
+                                Zrušit
+                            </button>
+                         </>
+                    ) : (
+                        <button 
+                            onClick={() => setIsEditing(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md hover:bg-slate-50 text-slate-700 transition-colors shadow-sm"
+                        >
+                            <Edit2 size={14} /> Upravit
+                        </button>
+                    )}
+
+                    {!isEditing && (
+                        <>
+                            <button 
+                                onClick={downloadPDF}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md hover:bg-slate-50 text-slate-700 transition-colors shadow-sm"
+                            >
+                                <Download size={14} /> PDF
+                            </button>
+                            <button 
+                                onClick={() => copyToClipboard(`${report.subjective}\n${report.objective}\n${report.assessment}\n${report.plan}`, 'full')}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors shadow-sm"
+                            >
+                                {copied === 'full' ? <Check size={14} /> : <Copy size={14} />}
+                                Vše
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
             
-            <ReportSection title="Subjektivní (Anamnéza)" content={report.subjective} id="sub" />
-            <ReportSection title="Objektivní (Nález)" content={report.objective} id="obj" />
-            <ReportSection title="Hodnocení (Diagnóza)" content={report.assessment} id="ass" />
-            <ReportSection title="Plán (Terapie)" content={report.plan} id="pla" />
+            <ReportSection title="Subjektivní (Anamnéza)" content={isEditing ? editedReport.subjective : report.subjective} field="subjective" />
+            <ReportSection title="Objektivní (Nález)" content={isEditing ? editedReport.objective : report.objective} field="objective" />
+            <ReportSection title="Hodnocení (Diagnóza)" content={isEditing ? editedReport.assessment : report.assessment} field="assessment" />
+            <ReportSection title="Plán (Terapie)" content={isEditing ? editedReport.plan : report.plan} field="plan" />
             
             <div className="mt-8 pt-6 border-t border-slate-200">
                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Shrnutí</h4>
-               <p className="text-slate-700 italic bg-white p-4 rounded-lg border border-slate-200">{report.summary}</p>
+               {isEditing ? (
+                   <textarea
+                    value={editedReport.summary}
+                    onChange={(e) => handleFieldChange('summary', e.target.value)}
+                    className="w-full min-h-[80px] p-4 text-slate-700 italic bg-white rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-y"
+                  />
+               ) : (
+                   <p className="text-slate-700 italic bg-white p-4 rounded-lg border border-slate-200">{report.summary}</p>
+               )}
             </div>
           </div>
         )}
@@ -240,54 +286,6 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ entities, repo
                 </div>
             </div>
           </div>
-        )}
-
-        {activeTab === 'chat' && (
-            <div className="flex flex-col h-full">
-                <div className="flex-1 space-y-4 mb-4 min-h-0 overflow-y-auto">
-                    {chatHistory.length === 0 && (
-                        <div className="text-center text-slate-400 mt-8">
-                            <Bot size={48} className="mx-auto mb-3 opacity-20" />
-                            <p>Zeptejte se AI asistenta na detaily z vyšetření.</p>
-                            <p className="text-xs mt-2">Např: "Jaké léky pacient bere?", "Zmínil pacient bolest hlavy?"</p>
-                        </div>
-                    )}
-                    {chatHistory.map((msg, idx) => (
-                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${msg.role === 'user' ? 'bg-primary-600 text-white rounded-br-none' : 'bg-white border border-slate-100 text-slate-800 rounded-bl-none'}`}>
-                                {msg.text}
-                            </div>
-                        </div>
-                    ))}
-                    {isChatLoading && (
-                         <div className="flex justify-start">
-                             <div className="bg-white text-slate-500 rounded-2xl rounded-bl-none px-4 py-2 text-sm flex items-center gap-2 border border-slate-100 shadow-sm">
-                                <Sparkles size={14} className="text-primary-500 animate-pulse" />
-                                <span className="text-xs font-medium text-slate-500 animate-pulse">AI přemýšlí...</span>
-                             </div>
-                         </div>
-                    )}
-                    <div ref={chatEndRef}></div>
-                </div>
-
-                <div className="flex gap-2 pt-4 border-t border-slate-200 mt-auto">
-                    <input 
-                        type="text" 
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                        placeholder="Zeptejte se na obsah vyšetření..."
-                        className="flex-1 px-4 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-slate-900 text-sm shadow-sm"
-                    />
-                    <button 
-                        onClick={handleSendMessage}
-                        disabled={isChatLoading || !chatInput.trim()}
-                        className="bg-primary-600 hover:bg-primary-700 text-white p-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-                    >
-                        <Send size={20} />
-                    </button>
-                </div>
-            </div>
         )}
       </div>
     </div>
