@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Mic, Upload, Square, AlertCircle, Sparkles } from 'lucide-react';
 import { AppState, AudioFile } from '../types';
@@ -19,7 +20,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Determine the best supported mime type for the browser
+      // Critical: Explicitly check what the browser supports and prefer standard codecs
       const mimeTypes = [
         'audio/webm;codecs=opus',
         'audio/webm',
@@ -35,7 +36,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
         }
       }
       
-      // Fallback to browser default if no specific type matches
       const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
       const recorder = new MediaRecorder(stream, options);
       
@@ -47,20 +47,19 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
       };
 
       recorder.onstop = () => {
+        // IMPORTANT: Use the actual mime type from the recorder instance if available
         const actualMimeType = mediaRecorderRef.current?.mimeType || selectedMimeType || 'audio/webm';
         const blob = new Blob(chunksRef.current, { type: actualMimeType });
         
-        // Determine appropriate extension
         let ext = 'webm';
         if (actualMimeType.includes('mp4') || actualMimeType.includes('aac')) ext = 'm4a';
         if (actualMimeType.includes('wav')) ext = 'wav';
 
-        // Sanitize filename
         const timeStr = new Date().toLocaleTimeString('cs-CZ').replace(/:/g, '-');
 
         onAudioReady({
             blob,
-            mimeType: actualMimeType,
+            mimeType: actualMimeType, // Pass exact type to Gemini
             name: `Nahravka_${timeStr}.${ext}`
         });
         stream.getTracks().forEach(track => track.stop());
@@ -69,7 +68,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
       recorder.start();
       setIsRecording(true);
       
-      // Timer
       const startTime = Date.now();
       timerRef.current = window.setInterval(() => {
         setRecordingTime(Math.floor((Date.now() - startTime) / 1000));
@@ -95,7 +93,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
     if (file) {
       onAudioReady({
         blob: file,
-        mimeType: file.type || "audio/mp3", // fallback
+        mimeType: file.type || "audio/mp3",
         name: file.name
       });
     }
@@ -109,12 +107,10 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
 
   const isBusy = appState === AppState.PROCESSING_AUDIO || appState === AppState.ANALYZING;
 
-  // Render Loading State
   if (isBusy) {
     return (
       <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center transition-all">
         <div className="flex flex-col items-center justify-center">
-            {/* Animated Icon Circle */}
             <div className="relative mb-8">
                 <div className="absolute inset-0 bg-primary-100 rounded-full animate-ping opacity-20"></div>
                 <div className="relative bg-white p-6 rounded-full shadow-lg border border-slate-100 z-10">
@@ -124,7 +120,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
                         <Sparkles size={32} className="text-purple-600 animate-pulse" />
                     )}
                 </div>
-                {/* Spinner Ring */}
                 <div className="absolute inset-0 -m-2 border-4 border-primary-100 rounded-full"></div>
                 <div className="absolute inset-0 -m-2 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
@@ -133,7 +128,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
                {appState === AppState.PROCESSING_AUDIO ? 'Zpracování Záznamu' : 'AI Analýza'}
             </h3>
             
-            {/* Progress Bar */}
             <div className="w-64 h-2 bg-slate-200 rounded-full mt-4 mb-4 overflow-hidden relative">
                <div className="absolute top-0 left-0 h-full bg-primary-500 rounded-full animate-indeterminate w-1/2"></div>
             </div>
@@ -144,7 +138,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
     );
   }
 
-  // Render Recording/Idle State
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
       <div className="mb-8">
@@ -153,7 +146,6 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioReady, appS
       </div>
 
       <div className="flex flex-col gap-6">
-        {/* Recorder Area */}
         <div className={`relative p-8 rounded-xl border-2 border-dashed transition-all ${isRecording ? 'border-red-400 bg-red-50' : 'border-slate-300 hover:border-primary-400 bg-slate-50'}`}>
             
             {isRecording ? (
