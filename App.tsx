@@ -8,7 +8,7 @@ import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, Va
 import { transcribeAudio, extractEntities, classifyDocument, generateStructuredDocument } from './services/geminiService';
 import { validateReport } from './services/validationService';
 import { saveState, loadState, clearState } from './services/storageService';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, CheckCircle, ArrowRight } from 'lucide-react';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
@@ -57,36 +57,48 @@ const App: React.FC = () => {
       const { text, segments } = await transcribeAudio(file.blob, file.mimeType);
       
       setResult(prev => ({ ...prev, rawTranscript: text, segments }));
-      setAppState(AppState.ANALYZING);
-
-      // 2. Extract Entities (Parallel) & Classify Document
-      setProgress("Analyzuji entity a klasifikuji typ dokumentu...");
       
-      const [entities, detectedType] = await Promise.all([
-        extractEntities(text),
-        classifyDocument(text)
-      ]);
-
-      // 3. Generate Specific Report
-      setProgress(`Generuji dokument typu: ${detectedType}...`);
-      const report = await generateStructuredDocument(text, detectedType, entities);
-      
-      // 4. Validate Initial Report
-      const validation = validateReport(report);
-      setValidationResult(validation);
-
-      setResult(prev => ({
-        ...prev,
-        entities,
-        report
-      }));
-
-      setAppState(AppState.REVIEW);
+      // Pause for user confirmation
+      setAppState(AppState.TRANSCRIPT_CONFIRMATION);
 
     } catch (error) {
-      console.error("Workflow failed", error);
+      console.error("Transcription failed", error);
       setAppState(AppState.ERROR);
     }
+  };
+
+  const handleConfirmTranscript = async () => {
+      setAppState(AppState.ANALYZING);
+      try {
+          // 2. Extract Entities (Parallel) & Classify Document
+          setProgress("Analyzuji entity a klasifikuji typ dokumentu...");
+          
+          const text = result.rawTranscript;
+          const [entities, detectedType] = await Promise.all([
+            extractEntities(text),
+            classifyDocument(text)
+          ]);
+
+          // 3. Generate Specific Report
+          setProgress(`Generuji dokument typu: ${detectedType}...`);
+          const report = await generateStructuredDocument(text, detectedType, entities);
+          
+          // 4. Validate Initial Report
+          const validation = validateReport(report);
+          setValidationResult(validation);
+
+          setResult(prev => ({
+            ...prev,
+            entities,
+            report
+          }));
+
+          setAppState(AppState.REVIEW);
+
+      } catch (error) {
+          console.error("Analysis failed", error);
+          setAppState(AppState.ERROR);
+      }
   };
 
   const handleReportUpdate = (newReport: StructuredReport) => {
@@ -135,11 +147,51 @@ const App: React.FC = () => {
       <Header />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {appState !== AppState.REVIEW ? (
+        {appState === AppState.IDLE || appState === AppState.RECORDING || appState === AppState.PROCESSING_AUDIO || appState === AppState.ANALYZING || appState === AppState.ERROR ? (
           <div className="flex flex-col items-center justify-center min-h-[60vh]">
             <AudioRecorder onAudioReady={handleAudioReady} appState={appState} progress={progress} />
           </div>
         ) : null}
+
+        {appState === AppState.TRANSCRIPT_CONFIRMATION && (
+            <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-140px)]">
+                <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <CheckCircle className="text-primary-600" />
+                                Potvrzení přepisu
+                            </h2>
+                            <p className="text-slate-500 text-sm mt-1">
+                                Zkontrolujte automatický přepis před generováním dokumentace.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                             <button 
+                                onClick={reset}
+                                className="px-4 py-2 text-slate-600 hover:text-red-600 font-medium text-sm transition-colors"
+                             >
+                                Zrušit
+                             </button>
+                             <button 
+                                onClick={handleConfirmTranscript}
+                                className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-bold shadow-md transition-all transform hover:scale-105"
+                             >
+                                Potvrdit a Analyzovat <ArrowRight size={18} />
+                             </button>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 min-h-0 border rounded-xl overflow-hidden shadow-inner bg-slate-50">
+                        <TranscriptEditor 
+                            transcript={result.rawTranscript}
+                            segments={result.segments}
+                            audioUrl={audioUrl}
+                        />
+                    </div>
+                </div>
+            </div>
+        )}
 
         {appState === AppState.REVIEW && result.report && (
           <div className="h-[calc(100vh-140px)] flex flex-col">
