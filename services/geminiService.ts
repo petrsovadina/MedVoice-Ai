@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { 
   MedicalEntity, 
@@ -7,9 +6,6 @@ import {
   StructuredReport,
   MedicalDocumentData
 } from "../types";
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 /**
  * Helper to convert Blob to Base64
@@ -66,11 +62,19 @@ const cleanAndParseJSON = <T>(text: string | undefined, fallback: T): T => {
   }
 };
 
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key chybí. Ujistěte se, že je nastavena proměnná prostředí process.env.API_KEY.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 /**
  * 1. Transcribe Audio
  */
 export const transcribeAudio = async (audioBlob: Blob, mimeType: string): Promise<{ text: string; segments: TranscriptSegment[] }> => {
-  if (!apiKey) throw new Error("API Key chybí");
+  const ai = getAIClient();
   const base64Data = await blobToBase64(audioBlob);
 
   const response = await ai.models.generateContent({
@@ -128,7 +132,9 @@ export const transcribeAudio = async (audioBlob: Blob, mimeType: string): Promis
  * 2. Extract Entities
  */
 export const extractEntities = async (transcript: string): Promise<MedicalEntity[]> => {
-  if (!apiKey || !transcript) return [];
+  const ai = getAIClient();
+  if (!transcript) return [];
+  
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: {
@@ -166,6 +172,7 @@ export const extractEntities = async (transcript: string): Promise<MedicalEntity
  * 3. Classify Document Type
  */
 export const classifyDocument = async (transcript: string): Promise<ReportType> => {
+    const ai = getAIClient();
     const prompt = `Analyzuj přepis lékařské konzultace a urči nejvhodnější typ dokumentu.
     
     1. AMBULANTNI_ZAZNAM: Standardní vyšetření, SOAP.
@@ -207,6 +214,7 @@ export const classifyDocument = async (transcript: string): Promise<ReportType> 
  * 4. Generate Structured Document (Schema-Driven + Entity-Aware)
  */
 export const generateStructuredDocument = async (transcript: string, type: ReportType, entities: MedicalEntity[] = []): Promise<StructuredReport> => {
+    const ai = getAIClient();
     let schema: Schema;
     let promptInstruction: string;
 

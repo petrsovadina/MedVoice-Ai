@@ -205,7 +205,6 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           content += `Doporučení: ${d.plan?.doporuceni || '-'}\n`;
           content += `Poučení: ${d.plan?.pouceni || '-'}\n`;
       } 
-      // ... (Generic fallback for other types)
       else {
           content += JSON.stringify(data, null, 2);
       }
@@ -229,263 +228,295 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   };
 
   const downloadPDF = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+        format: 'a4',
+        unit: 'mm'
+    });
+    
     const data = report.data;
     const type = report.reportType;
     
-    // Config
+    // Layout Constants
     const margin = 20;
-    const pageWidth = doc.internal.pageSize.width;
-    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width; // 210mm
+    const pageHeight = doc.internal.pageSize.height; // 297mm
     const contentWidth = pageWidth - (margin * 2);
     let yPos = margin;
 
     // Colors
-    const primaryColor = [2, 132, 199]; // text-primary-600
-    const grayColor = [100, 116, 139]; // text-slate-500
-    const blackColor = [15, 23, 42]; // text-slate-900
+    const colorPrimary = [2, 132, 199];   // primary-600
+    const colorText = [30, 41, 59];       // slate-800
+    const colorTextLight = [100, 116, 139]; // slate-500
+    const colorBorder = [203, 213, 225];  // slate-300
+    const colorFill = [241, 245, 249];    // slate-100
 
-    const checkPageBreak = (neededSpace: number) => {
-        if (yPos + neededSpace > pageHeight - 25) { // Leave space for footer
+    // --- Helpers ---
+
+    const checkPageBreak = (heightNeeded: number) => {
+        if (yPos + heightNeeded > pageHeight - 20) {
             doc.addPage();
-            yPos = margin;
+            yPos = margin + 10; // Extra space on new page
             return true;
         }
         return false;
     };
 
-    // --- Content Helpers ---
-    
-    const drawHeader = (title: string) => {
-        // Clinic Name
+    const drawHeader = () => {
+        doc.setFillColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
+        doc.rect(0, 0, pageWidth, 5, 'F');
+        yPos += 5;
+
+        // Clinic Info
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(colorText[0], colorText[1], colorText[2]);
+        doc.text(data.poskytovatel?.lekar || "MedVoice Clinic", pageWidth - margin, yPos + 5, { align: "right" });
+        
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(colorTextLight[0], colorTextLight[1], colorTextLight[2]);
+        doc.text(data.poskytovatel?.odbornost || "Všeobecné lékařství", pageWidth - margin, yPos + 10, { align: "right" });
+        doc.text(data.poskytovatel?.datum_cas || new Date().toLocaleString(), pageWidth - margin, yPos + 15, { align: "right" });
+
+        // Title
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-        doc.text("MedVoice Clinic, s.r.o.", margin, yPos);
-        yPos += 7;
-
-        // Doctor Info
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-        doc.text(`${data.poskytovatel?.lekar || "MUDr. Jan Novák"} | ${data.poskytovatel?.odbornost || "Všeobecné lékařství"}`, margin, yPos);
-        yPos += 12;
-
-        // Separator
-        doc.setDrawColor(226, 232, 240); // slate-200
+        doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
+        const title = REPORT_LABELS[type].toUpperCase();
+        // Wraps title if too long
+        const splitTitle = doc.splitTextToSize(title, 120);
+        doc.text(splitTitle, margin, yPos + 10);
+        
+        yPos += Math.max(25, splitTitle.length * 8 + 10);
+        
+        doc.setDrawColor(colorBorder[0], colorBorder[1], colorBorder[2]);
         doc.setLineWidth(0.5);
         doc.line(margin, yPos, pageWidth - margin, yPos);
-        yPos += 8;
-
-        // Document Title
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
-        doc.text(title.toUpperCase(), pageWidth / 2, yPos, { align: "center" });
-        yPos += 10;
+        yPos += 5;
     };
 
     const drawPatientBox = () => {
-        const boxHeight = 28;
-        doc.setFillColor(248, 250, 252); // slate-50
-        doc.roundedRect(margin, yPos, contentWidth, boxHeight, 2, 2, 'F');
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(margin, yPos, contentWidth, boxHeight, 2, 2, 'S');
+        const boxHeight = 22;
+        const colWidth = contentWidth / 3;
 
-        let innerY = yPos + 8;
-        
-        // Row 1
-        doc.setFontSize(8);
+        doc.setFillColor(colorFill[0], colorFill[1], colorFill[2]);
+        doc.rect(margin, yPos, contentWidth, 8, 'F');
+
+        doc.setDrawColor(colorBorder[0], colorBorder[1], colorBorder[2]);
+        doc.rect(margin, yPos, contentWidth, boxHeight);
+        doc.line(margin, yPos + 8, pageWidth - margin, yPos + 8);
+        doc.line(margin + colWidth, yPos, margin + colWidth, yPos + boxHeight);
+        doc.line(margin + (colWidth * 2), yPos, margin + (colWidth * 2), yPos + boxHeight);
+
+        // Labels
+        doc.setFontSize(7);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-        doc.text("PACIENT", margin + 5, innerY);
-        doc.text("RČ / DATUM NAR.", margin + 80, innerY);
-        doc.text("POJIŠŤOVNA", margin + 140, innerY);
+        doc.setTextColor(colorTextLight[0], colorTextLight[1], colorTextLight[2]);
+        doc.text("PACIENT", margin + 2, yPos + 5);
+        doc.text("RČ / DATUM NAROZENÍ", margin + colWidth + 2, yPos + 5);
+        doc.text("POJIŠŤOVNA", margin + (colWidth * 2) + 2, yPos + 5);
 
-        innerY += 6;
-
-        // Data Row
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
+        // Values
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(colorText[0], colorText[1], colorText[2]);
         
-        const name = data.identifikace?.jmeno || "Neznámý";
-        const rc = data.identifikace?.rodne_cislo_datum_nar || "-";
-        const ins = data.identifikace?.pojistovna || "-";
+        const name = doc.splitTextToSize(data.identifikace?.jmeno || "", colWidth - 4);
+        const rc = doc.splitTextToSize(data.identifikace?.rodne_cislo_datum_nar || "", colWidth - 4);
+        const ins = doc.splitTextToSize(data.identifikace?.pojistovna || "", colWidth - 4);
 
-        doc.text(name, margin + 5, innerY);
-        doc.text(rc, margin + 80, innerY);
-        doc.text(ins, margin + 140, innerY);
-
-        // Date in corner
-        doc.setFontSize(9);
-        doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-        doc.text(`Vyšetřeno: ${data.poskytovatel?.datum_cas || new Date().toLocaleString()}`, pageWidth - margin - 5, yPos - 3, { align: "right" });
+        doc.text(name, margin + 2, yPos + 14);
+        doc.text(rc, margin + colWidth + 2, yPos + 14);
+        doc.text(ins, margin + (colWidth * 2) + 2, yPos + 14);
 
         yPos += boxHeight + 10;
     };
 
-    const drawSection = (label: string, text: string | undefined, isBold = false) => {
-        if (!text) return;
-        
+    const drawSectionHeader = (label: string) => {
+        checkPageBreak(15);
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]); // Blue header
-        
-        checkPageBreak(20);
+        doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
         doc.text(label.toUpperCase(), margin, yPos);
-        yPos += 6;
+        doc.setDrawColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
+        doc.setLineWidth(0.2);
+        doc.line(margin, yPos + 1.5, margin + 20, yPos + 1.5);
+        yPos += 7;
+    };
 
-        doc.setFontSize(11);
-        doc.setFont("helvetica", isBold ? "bold" : "normal");
-        doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
+    const drawTextBlock = (text: string | undefined, italic = false) => {
+        if (!text) return;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", italic ? "italic" : "normal");
+        doc.setTextColor(colorText[0], colorText[1], colorText[2]);
         
         const splitText = doc.splitTextToSize(text, contentWidth);
         if (checkPageBreak(splitText.length * 5)) {
-            // If page break triggered, reprint header
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-            doc.text(`${label.toUpperCase()} (pokračování)`, margin, yPos);
-            yPos += 6;
-            doc.setFontSize(11);
-            doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
+            // reprint header if needed logic
         }
-        
         doc.text(splitText, margin, yPos);
-        yPos += (splitText.length * 5) + 6; // Spacing after paragraph
+        yPos += (splitText.length * 5) + 5;
     };
 
-    // --- Main Generation ---
+    // --- Content Generation ---
 
-    drawHeader(REPORT_LABELS[type]);
+    drawHeader();
     drawPatientBox();
 
-    // Specific Content Logic
     if (type === ReportType.AMBULANTNI_ZAZNAM) {
         const d = data as AmbulantniZaznamData;
-        drawSection("Subjektivně (S)", d.subjektivni);
-        drawSection("Objektivně (O)", d.objektivni);
+        
+        drawSectionHeader("Subjektivně");
+        drawTextBlock(d.subjektivni);
+        
+        drawSectionHeader("Objektivně");
+        drawTextBlock(d.objektivni);
 
         if (d.hodnoceni?.diagnozy?.length) {
-            checkPageBreak(30);
-            doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-            doc.text("HODNOCENÍ (A)", margin, yPos); yPos += 6;
-            
+            checkPageBreak(20);
+            drawSectionHeader("Hodnocení");
             d.hodnoceni.diagnozy.forEach(dg => {
-                checkPageBreak(10);
-                doc.setFont("helvetica", "bold"); doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
-                doc.text(`${dg.kod}`, margin + 5, yPos);
+                doc.setFont("helvetica", "bold");
+                const codeWidth = 25;
+                // Calculate height of description
+                const descLines = doc.splitTextToSize(dg.nazev, contentWidth - codeWidth - 2);
+                const heightNeeded = Math.max(6, descLines.length * 5);
+                
+                checkPageBreak(heightNeeded + 2);
+
+                doc.text(dg.kod, margin, yPos);
                 doc.setFont("helvetica", "normal");
-                doc.text(`- ${dg.nazev}`, margin + 25, yPos);
-                yPos += 6;
+                doc.text(descLines, margin + codeWidth, yPos);
+                yPos += heightNeeded + 2;
             });
             yPos += 2;
             if (d.hodnoceni.zaver) {
-                 doc.setFont("helvetica", "italic");
-                 const zaverText = doc.splitTextToSize(`Závěr: ${d.hodnoceni.zaver}`, contentWidth);
-                 checkPageBreak(zaverText.length * 5);
-                 doc.text(zaverText, margin, yPos);
-                 yPos += (zaverText.length * 5) + 8;
+                drawTextBlock(`Závěr: ${d.hodnoceni.zaver}`, true);
             }
         }
 
         if (d.plan) {
-            checkPageBreak(30);
-            doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-            doc.text("PLÁN (P)", margin, yPos); yPos += 6;
-            
+            checkPageBreak(20);
+            drawSectionHeader("Plán péče");
             if (d.plan.medikace?.length) {
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(9);
+                doc.text("Medikace:", margin, yPos);
+                yPos += 5;
+                doc.setFont("helvetica", "normal");
                 d.plan.medikace.forEach(m => {
-                    checkPageBreak(6);
-                    doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]); doc.setFont("helvetica", "normal");
-                    doc.text(`• ${m.nazev} (${m.davkovani})`, margin + 5, yPos); yPos += 6;
+                    const dosageWidth = 40;
+                    const nameWidth = contentWidth - dosageWidth - 5;
+                    const nameLines = doc.splitTextToSize(`• ${m.nazev}`, nameWidth);
+                    const dosageLines = doc.splitTextToSize(m.davkovani, dosageWidth);
+                    
+                    const heightNeeded = Math.max(6, Math.max(nameLines.length, dosageLines.length) * 5);
+                    checkPageBreak(heightNeeded + 2);
+
+                    doc.text(nameLines, margin + 2, yPos);
+                    doc.text(dosageLines, pageWidth - margin, yPos, { align: "right" });
+                    yPos += heightNeeded + 2;
                 });
-                yPos += 2;
+                yPos += 3;
             }
-            
-            drawSection("Doporučení", d.plan.doporuceni);
-            drawSection("Poučení pacienta", d.plan.pouceni);
-            
+            if (d.plan.doporuceni) {
+                 doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+                 doc.text("Doporučení:", margin, yPos); yPos += 5;
+                 drawTextBlock(d.plan.doporuceni);
+            }
             if (d.plan.kontrola) {
                 checkPageBreak(10);
                 doc.setFont("helvetica", "bold");
-                doc.text(`Kontrola: ${d.plan.kontrola}`, margin, yPos); yPos += 10;
+                doc.text(`Kontrola: ${d.plan.kontrola}`, margin, yPos);
+                yPos += 10;
+            }
+            if (d.plan.pouceni) {
+                 drawSectionHeader("Poučení");
+                 drawTextBlock(d.plan.pouceni);
             }
         }
-    } 
-    else if (type === ReportType.OSETR_ZAZNAM) {
+    } else if (type === ReportType.OSETR_ZAZNAM) {
         const d = data as OsetrovatelskyZaznamData;
-        drawSection("Subjektivní potíže", d.subjektivni_potize);
-        
-        // Vitals Grid
-        checkPageBreak(30);
-        doc.setFillColor(240, 249, 255); // blue-50
-        doc.rect(margin, yPos, contentWidth, 20, 'F');
-        doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-        doc.text("TK", margin + 10, yPos + 8); 
-        doc.text("Pulz", margin + 60, yPos + 8); 
-        doc.text("Teplota", margin + 110, yPos + 8);
-        
-        doc.setFontSize(12); doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
-        doc.text(d.vitalni_funkce?.tk || "-", margin + 10, yPos + 16); 
-        doc.text(d.vitalni_funkce?.p || "-", margin + 60, yPos + 16); 
-        doc.text(d.vitalni_funkce?.tt || "-", margin + 110, yPos + 16);
-        yPos += 30;
+        drawSectionHeader("Subjektivní potíže");
+        drawTextBlock(d.subjektivni_potize);
 
-        if (d.provedene_vykony?.length) {
-             doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-             doc.text("PROVEDENÉ VÝKONY", margin, yPos); yPos += 6;
+        checkPageBreak(30);
+        drawSectionHeader("Vitální funkce");
+        doc.setFillColor(colorFill[0], colorFill[1], colorFill[2]);
+        doc.rect(margin, yPos, contentWidth, 15, 'F');
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        
+        const colW = contentWidth / 4;
+        // Centered headers
+        doc.text("TK", margin + (colW/2), yPos + 6, {align: "center"});
+        doc.text("Pulz", margin + colW + (colW/2), yPos + 6, {align: "center"});
+        doc.text("Teplota", margin + (colW*2) + (colW/2), yPos + 6, {align: "center"});
+        doc.text("SpO2", margin + (colW*3) + (colW/2), yPos + 6, {align: "center"});
+
+        doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+        // Centered values
+        doc.text(d.vitalni_funkce?.tk || "--", margin + (colW/2), yPos + 12, {align: "center"});
+        doc.text(d.vitalni_funkce?.p || "--", margin + colW + (colW/2), yPos + 12, {align: "center"});
+        doc.text(d.vitalni_funkce?.tt || "--", margin + (colW*2) + (colW/2), yPos + 12, {align: "center"});
+        doc.text(d.vitalni_funkce?.spo2 || "--", margin + (colW*3) + (colW/2), yPos + 12, {align: "center"});
+        yPos += 20;
+
+        if(d.provedene_vykony?.length) {
+             drawSectionHeader("Provedené výkony");
              d.provedene_vykony.forEach(v => {
                  checkPageBreak(6);
-                 doc.setFont("helvetica", "normal"); doc.setTextColor(blackColor[0], blackColor[1], blackColor[2]);
-                 doc.text(`${v.cas || '--:--'} - ${v.nazev}`, margin + 5, yPos);
+                 doc.setFont("helvetica", "mono");
+                 doc.text(v.cas || "--:--", margin, yPos);
+                 doc.setFont("helvetica", "normal");
+                 doc.text(v.nazev, margin + 25, yPos);
                  yPos += 6;
              });
-             yPos += 8;
+             yPos += 5;
         }
-        drawSection("Poznámka sestry", d.poznamka_sestry);
-    }
-    else {
-        // Fallback for other types
-        const textLines = doc.splitTextToSize(JSON.stringify(data, null, 2).replace(/[{}"],/g, ''), contentWidth);
-        checkPageBreak(textLines.length * 5);
-        doc.setFont("helvetica", "normal");
-        doc.text(textLines, margin, yPos);
+        drawSectionHeader("Poznámka sestry");
+        drawTextBlock(d.poznamka_sestry);
+
+    } else if (type === ReportType.KONZILIARNI_ZPRAVA) {
+        const d = data as KonziliarniZpravaData;
+        
+        doc.setDrawColor(251, 191, 36); 
+        doc.setFillColor(255, 251, 235);
+        doc.roundedRect(margin, yPos, contentWidth, 12, 1, 1, 'FD');
+        doc.setFont("helvetica", "bold"); doc.setTextColor(180, 83, 9);
+        doc.text(`URGENTNOST: ${d.urgentnost.toUpperCase()}`, margin + 5, yPos + 8);
+        doc.text(`CÍL: ${d.cilova_odbornost}`, pageWidth - margin - 5, yPos + 8, { align: "right" });
+        yPos += 18;
+
+        drawSectionHeader("Důvod konzilia (Otázka)");
+        drawTextBlock(d.duvod_konzilia);
+        drawSectionHeader("Nynější onemocnění");
+        drawTextBlock(d.nynnejsi_onemocneni);
+        drawSectionHeader("Dosavadní léčba");
+        drawTextBlock(d.dosavadni_lecba);
+
+    } else {
+        const text = JSON.stringify(data, null, 2).replace(/[{}"],/g, '');
+        drawTextBlock(text);
     }
 
-    // --- Footer & Signature (Add to every page) ---
+    // --- Footer ---
     const pageCount = doc.getNumberOfPages();
     for(let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
-        
-        const footerY = pageHeight - 15;
-        
-        // Separator
-        doc.setDrawColor(226, 232, 240);
-        doc.setLineWidth(0.5);
-        doc.line(margin, footerY - 15, pageWidth - margin, footerY - 15);
-
-        // MedVoice AI Logo
-        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-        doc.circle(margin + 3, footerY - 3, 3, 'F'); // Dot icon
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-        doc.text("MedVoice AI", margin + 8, footerY);
-
-        // Page Number
+        doc.setDrawColor(colorBorder[0], colorBorder[1], colorBorder[2]);
+        doc.setLineWidth(0.2);
+        doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
         doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-        doc.text(`Strana ${i} / ${pageCount}`, pageWidth - margin, footerY, { align: "right" });
-
-        // Signature Line (Only on last page)
+        doc.setTextColor(colorTextLight[0], colorTextLight[1], colorTextLight[2]);
+        doc.text("Generováno systémem MedVoice AI", margin, pageHeight - 10);
+        doc.text(`Strana ${i} / ${pageCount}`, pageWidth - margin, pageHeight - 10, { align: "right" });
+        
         if (i === pageCount) {
-             const sigY = footerY - 25;
-             doc.line(130, sigY, pageWidth - margin, sigY);
-             doc.setFontSize(9);
-             doc.text("Razítko a podpis", 160, sigY + 5, { align: "center" });
+             const sigY = pageHeight - 35;
+             doc.setDrawColor(colorText[0], colorText[1], colorText[2]);
+             doc.setLineWidth(0.2);
+             doc.line(pageWidth - margin - 60, sigY, pageWidth - margin, sigY);
+             doc.setFontSize(8);
+             doc.text("Razítko a podpis lékaře", pageWidth - margin - 30, sigY + 4, { align: "center" });
         }
     }
 
@@ -565,7 +596,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               <h4 className="text-xs font-bold text-blue-700 uppercase mb-3">Hodnocení (A)</h4>
               <div className="space-y-2 mb-3">
                   {data.hodnoceni?.diagnozy?.map((d, i) => (
-                      <div key={i} className="flex gap-2 items-center">
+                      <div key={i} className="flex gap-2 items-center bg-white p-2 rounded shadow-sm border border-blue-100">
                           <input 
                               className="w-20 p-1 text-sm font-bold text-blue-900 border border-blue-200 rounded bg-white"
                               value={d.kod}
@@ -595,7 +626,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                   {data.plan?.medikace?.map((m, i) => (
                       <div key={i} className="flex gap-2 items-center bg-white p-2 rounded border border-green-100 shadow-sm">
                           <input 
-                              className="flex-1 text-sm font-medium text-slate-800 outline-none bg-white"
+                              className="flex-1 text-sm font-medium text-slate-800 outline-none bg-transparent"
                               value={m.nazev}
                               onChange={(e) => {
                                   const newMed = [...data.plan.medikace];
@@ -604,7 +635,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                               }}
                           />
                           <input 
-                              className="w-32 text-sm text-slate-500 text-right outline-none bg-slate-50 rounded px-1"
+                              className="w-32 text-sm text-slate-500 text-right outline-none bg-transparent"
                               value={m.davkovani}
                               onChange={(e) => {
                                   const newMed = [...data.plan.medikace];
@@ -626,16 +657,16 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       <div className="space-y-4">
           <EditableArea label="Subjektivní potíže" value={data.subjektivni_potize} onChange={(v) => updateData(['subjektivni_potize'], v)} />
           <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50 border rounded-lg">
-              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="TK" value={data.vitalni_funkce?.tk} onChange={(v) => updateData(['vitalni_funkce', 'tk'], v)} inputClassName="bg-white" />
-              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Pulz" value={data.vitalni_funkce?.p} onChange={(v) => updateData(['vitalni_funkce', 'p'], v)} inputClassName="bg-white" />
-              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Teplota" value={data.vitalni_funkce?.tt} onChange={(v) => updateData(['vitalni_funkce', 'tt'], v)} inputClassName="bg-white" />
+              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="TK" value={data.vitalni_funkce?.tk} onChange={(v) => updateData(['vitalni_funkce', 'tk'], v)} inputClassName="bg-transparent" />
+              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Pulz" value={data.vitalni_funkce?.p} onChange={(v) => updateData(['vitalni_funkce', 'p'], v)} inputClassName="bg-transparent" />
+              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Teplota" value={data.vitalni_funkce?.tt} onChange={(v) => updateData(['vitalni_funkce', 'tt'], v)} inputClassName="bg-transparent" />
           </div>
           <div className="p-4 border rounded-lg">
               <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Provedené výkony</h4>
               {data.provedene_vykony?.map((v, i) => (
-                  <div key={i} className="flex gap-2 mb-2 items-center">
+                  <div key={i} className="flex gap-2 mb-2 items-center bg-white p-1 rounded border border-slate-100">
                        <input 
-                          className="w-20 text-xs font-mono text-slate-500 bg-slate-100 rounded p-1 text-center"
+                          className="w-20 text-xs font-mono text-slate-500 bg-slate-50 rounded p-1 text-center"
                           value={v.cas || ''}
                           onChange={(e) => {
                               const newVyk = [...data.provedene_vykony];
@@ -645,7 +676,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                           placeholder="Čas"
                        />
                        <input 
-                          className="flex-1 text-sm border-b border-transparent hover:border-slate-200 focus:border-primary-300 outline-none transition-colors bg-transparent"
+                          className="flex-1 text-sm border-none outline-none bg-transparent px-2"
                           value={v.nazev}
                           onChange={(e) => {
                               const newVyk = [...data.provedene_vykony];
@@ -702,7 +733,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   
   const renderDoporuceni = (data: DoporuceniLecbyData) => (
       <div className="space-y-4">
-          <EditableInput label="Hlavní diagnóza" value={data.diagnoza_hlavni} onChange={(v) => updateData(['diagnoza_hlavni'], v)} />
+          <EditableInput label="Hlavní diagnóza" value={data.diagnoza_hlavni} onChange={(v) => updateData(['diagnoza_hlavni'], v)} inputClassName="bg-transparent" />
           <EditableArea label="Cíl léčby" value={data.cil_lecby} onChange={(v) => updateData(['cil_lecby'], v)} />
           <EditableArea label="Navrhovaná terapie" value={data.navrhovana_terapie} onChange={(v) => updateData(['navrhovana_terapie'], v)} />
           <div className="p-4 bg-slate-50 border rounded-lg">
@@ -710,7 +741,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               {data.procedury?.map((p, i) => (
                   <div key={i} className="flex gap-2 mb-2 items-center bg-white p-2 border rounded shadow-sm">
                       <input 
-                          className="flex-1 text-sm font-medium outline-none bg-white"
+                          className="flex-1 text-sm font-medium outline-none bg-transparent"
                           value={p.nazev}
                           onChange={(e) => {
                               const newProc = [...data.procedury];
@@ -719,7 +750,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                           }}
                       />
                       <input 
-                          className="w-24 text-sm text-slate-500 text-right outline-none bg-white"
+                          className="w-24 text-sm text-slate-500 text-right outline-none bg-transparent"
                           value={p.frekvence}
                           onChange={(e) => {
                               const newProc = [...data.procedury];
