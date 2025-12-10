@@ -41,8 +41,23 @@ export interface ValidationResult {
   errors: ValidationError[];
 }
 
+// Společná hlavička pro všechny dokumenty dle Vyhlášky 444/2024 Sb.
+export interface IdentifikacePacienta {
+  jmeno: string;
+  rodne_cislo_datum_nar: string; // RČ nebo datum narození
+  pojistovna?: string;
+}
+
+export interface IdentifikacePoskytovatele {
+  lekar: string;
+  odbornost: string;
+  datum_cas: string; // Datum a čas poskytnutí služby
+}
+
 // --- 1. AMBULANTNÍ ZÁZNAM (SOAP) ---
 export interface AmbulantniZaznamData {
+  identifikace: IdentifikacePacienta;
+  poskytovatel: IdentifikacePoskytovatele;
   subjektivni: string;
   objektivni: string;
   hodnoceni: {
@@ -52,12 +67,15 @@ export interface AmbulantniZaznamData {
   plan: {
     medikace: Array<{ nazev: string; davkovani: string }>;
     doporuceni: string;
+    pouceni: string; // Povinné dle vyhlášky (informace předaná pacientovi)
     kontrola: string;
   };
 }
 
 // --- 2. OŠETŘOVATELSKÝ ZÁZNAM ---
 export interface OsetrovatelskyZaznamData {
+  identifikace: IdentifikacePacienta;
+  poskytovatel: IdentifikacePoskytovatele;
   subjektivni_potize: string;
   vitalni_funkce: {
     tk: string; // Tlak
@@ -72,7 +90,8 @@ export interface OsetrovatelskyZaznamData {
 
 // --- 3. KONZILIÁRNÍ ZPRÁVA ---
 export interface KonziliarniZpravaData {
-  odesilajici_lekar: string;
+  identifikace: IdentifikacePacienta;
+  poskytovatel: IdentifikacePoskytovatele;
   cilova_odbornost: string;
   duvod_konzilia: string; // Otázka
   nynnejsi_onemocneni: string;
@@ -82,7 +101,8 @@ export interface KonziliarniZpravaData {
 
 // --- 4. POTVRZENÍ O VYŠETŘENÍ ---
 export interface PotvrzeniVysetreniData {
-  datum_cas_navstevy: string;
+  identifikace: IdentifikacePacienta;
+  poskytovatel: IdentifikacePoskytovatele;
   ucel_vysetreni: string; // např. "Akutní ošetření", "Preventivní prohlídka"
   doprovod?: string; // např. "v doprovodu matky"
   doporuceni_rezim: string; // např. "Klidový režim 3 dny"
@@ -90,6 +110,8 @@ export interface PotvrzeniVysetreniData {
 
 // --- 5. DOPORUČENÍ K LÉČBĚ (RHB/Lázně) ---
 export interface DoporuceniLecbyData {
+  identifikace: IdentifikacePacienta;
+  poskytovatel: IdentifikacePoskytovatele;
   diagnoza_hlavni: string;
   navrhovana_terapie: string; // Textový popis
   procedury: Array<{ nazev: string; frekvence: string }>;

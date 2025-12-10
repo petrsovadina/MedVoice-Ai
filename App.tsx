@@ -1,12 +1,13 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
 import { TranscriptEditor } from './components/TranscriptEditor';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
-import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, ValidationResult } from './types';
+import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, ValidationResult, MedicalEntity } from './types';
 import { transcribeAudio, extractEntities, classifyDocument, generateStructuredDocument } from './services/geminiService';
 import { validateReport } from './services/validationService';
+import { saveState, loadState, clearState } from './services/storageService';
 import { RotateCcw } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -22,11 +23,31 @@ const App: React.FC = () => {
   const [validationResult, setValidationResult] = useState<ValidationResult>({ isValid: true, errors: [] });
   const [progress, setProgress] = useState<string>("");
   const [isRegeneratingReport, setIsRegeneratingReport] = useState(false);
+  const [restoredFromBackup, setRestoredFromBackup] = useState(false);
+
+  // Load state on mount
+  useEffect(() => {
+    const saved = loadState();
+    if (saved && saved.report) {
+        setResult(saved);
+        setValidationResult(validateReport(saved.report));
+        setAppState(AppState.REVIEW);
+        setRestoredFromBackup(true);
+    }
+  }, []);
+
+  // Auto-save on result change
+  useEffect(() => {
+    if (appState === AppState.REVIEW && result.report) {
+        saveState(result);
+    }
+  }, [result, appState]);
 
   const handleAudioReady = async (file: AudioFile) => {
     setAudioFile(file);
     const url = URL.createObjectURL(file.blob);
     setAudioUrl(url);
+    setRestoredFromBackup(false);
 
     setAppState(AppState.PROCESSING_AUDIO);
     
@@ -75,10 +96,15 @@ const App: React.FC = () => {
     setValidationResult(validation);
   };
 
+  const handleEntitiesUpdate = (newEntities: MedicalEntity[]) => {
+    setResult(prev => ({ ...prev, entities: newEntities }));
+  };
+
   const handleRegenerateReport = async (type: ReportType) => {
       if (!result.rawTranscript) return;
       setIsRegeneratingReport(true);
       try {
+          // Use current entities state which might have been edited by user
           const newReport = await generateStructuredDocument(result.rawTranscript, type, result.entities);
           setResult(prev => ({ ...prev, report: newReport }));
           const validation = validateReport(newReport);
@@ -92,12 +118,16 @@ const App: React.FC = () => {
   };
 
   const reset = () => {
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    setAudioUrl(null);
-    setAppState(AppState.IDLE);
-    setAudioFile(null);
-    setResult({ rawTranscript: '', segments: [], entities: [], report: null });
-    setValidationResult({ isValid: true, errors: [] });
+    if (confirm("Opravdu chcete začít nový záznam? Neuložená data budou ztracena.")) {
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
+        setAppState(AppState.IDLE);
+        setAudioFile(null);
+        setResult({ rawTranscript: '', segments: [], entities: [], report: null });
+        setValidationResult({ isValid: true, errors: [] });
+        setRestoredFromBackup(false);
+        clearState();
+    }
   };
 
   return (
@@ -115,10 +145,12 @@ const App: React.FC = () => {
           <div className="h-[calc(100vh-140px)] flex flex-col">
              <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200">
-                        Hotovo
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${restoredFromBackup ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
+                        {restoredFromBackup ? 'Obnoveno ze zálohy' : 'Hotovo'}
                     </span>
-                    <span className="text-slate-500 text-sm font-medium">{audioFile?.name}</span>
+                    <span className="text-slate-500 text-sm font-medium">
+                        {audioFile?.name || (restoredFromBackup ? "Audio nedostupné (reload)" : "Záznam")}
+                    </span>
                 </div>
                 <button onClick={reset} className="flex items-center gap-2 text-slate-500 hover:text-primary-600 text-sm font-medium">
                     <RotateCcw size={16} /> Nový záznam
@@ -140,6 +172,7 @@ const App: React.FC = () => {
                         report={result.report}
                         validationResult={validationResult}
                         onReportChange={handleReportUpdate}
+                        onEntitiesChange={handleEntitiesUpdate}
                         onRegenerateReport={handleRegenerateReport}
                         isRegenerating={isRegeneratingReport}
                     />

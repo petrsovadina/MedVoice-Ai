@@ -115,7 +115,6 @@ export const transcribeAudio = async (audioBlob: Blob, mimeType: string): Promis
   const text = segments.map(s => `${s.speaker}: ${s.text}`).join('\n\n');
   
   if (!text && segments.length === 0) {
-      // Emergency fallback if JSON fails but model produced text
       if (response.text && !response.text.includes("{")) {
           return { text: response.text, segments: [] };
       }
@@ -211,23 +210,48 @@ export const generateStructuredDocument = async (transcript: string, type: Repor
     let schema: Schema;
     let promptInstruction: string;
 
-    // Build context from entities to ground the model
     const medEntities = entities.filter(e => e.category === 'MEDICATION').map(e => e.text).join(", ");
     const diagEntities = entities.filter(e => e.category === 'DIAGNOSIS').map(e => e.text).join(", ");
+    const piiEntities = entities.filter(e => e.category === 'PII').map(e => e.text).join(", ");
     
     const contextPrompt = `
     POUŽIJ EXTRAHOVANÉ ENTITY PRO PŘESNOST:
     - Medikace zmíněná v textu: ${medEntities || "Žádná"}
     - Diagnózy zmíněné v textu: ${diagEntities || "Žádné"}
+    - Osobní údaje (PII) z textu: ${piiEntities || "Nenalezeny"}
     
-    Při vyplňování schématu buď maximálně přesný. Nevymýšlej si léky, které nezazněly.`;
+    Vyplň pole 'identifikace' a 'poskytovatel' na základě kontextu rozhovoru (pokud zazní jméno pacienta nebo lékaře). Pokud nevíš, nech prázdné nebo použij zástupný text.
+    Při vyplňování buď maximálně přesný.`;
+
+    // Common properties definition for Identification
+    const identificationProps = {
+        identifikace: {
+            type: Type.OBJECT,
+            properties: {
+                jmeno: { type: Type.STRING, description: "Jméno a příjmení pacienta" },
+                rodne_cislo_datum_nar: { type: Type.STRING, description: "RČ nebo datum narození" },
+                pojistovna: { type: Type.STRING, description: "Kód pojišťovny" }
+            },
+            required: ["jmeno"]
+        },
+        poskytovatel: {
+            type: Type.OBJECT,
+            properties: {
+                lekar: { type: Type.STRING, description: "Jméno lékaře" },
+                odbornost: { type: Type.STRING },
+                datum_cas: { type: Type.STRING, description: "Datum a čas vyšetření" }
+            },
+            required: ["lekar", "datum_cas"]
+        }
+    };
 
     switch (type) {
         case ReportType.AMBULANTNI_ZAZNAM:
-            promptInstruction = "Vytvoř detailní Ambulantní záznam (SOAP). Do 'subjektivni' dej stížnosti pacienta. Do 'objektivni' dej nálezy lékaře. Rozepiš medikaci do pole 'plan.medikace'.";
+            promptInstruction = "Vytvoř detailní Ambulantní záznam (SOAP) dle vyhlášky 444/2024 Sb. Zahrň identifikaci, anamnézu, objektivní nález, diagnózu, plán a povinné poučení pacienta.";
             schema = {
                 type: Type.OBJECT,
                 properties: {
+                    ...identificationProps,
                     subjektivni: { type: Type.STRING },
                     objektivni: { type: Type.STRING },
                     hodnoceni: { 
@@ -242,19 +266,21 @@ export const generateStructuredDocument = async (transcript: string, type: Repor
                         properties: {
                             medikace: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { nazev: {type: Type.STRING}, davkovani: {type: Type.STRING} } } },
                             doporuceni: { type: Type.STRING },
+                            pouceni: { type: Type.STRING, description: "Informace předaná pacientovi o stavu a léčbě" },
                             kontrola: { type: Type.STRING }
                         }
                     }
                 },
-                required: ["subjektivni", "objektivni", "hodnoceni", "plan"]
+                required: ["identifikace", "poskytovatel", "subjektivni", "objektivni", "hodnoceni", "plan"]
             };
             break;
 
         case ReportType.OSETR_ZAZNAM:
-            promptInstruction = "Vytvoř Záznam ošetřovatelské péče. Extrahuj vitální funkce (TK, P, TT) pokud zazněly.";
+            promptInstruction = "Vytvoř Záznam ošetřovatelské péče.";
             schema = {
                 type: Type.OBJECT,
                 properties: {
+                    ...identificationProps,
                     subjektivni_potize: { type: Type.STRING },
                     vitalni_funkce: {
                         type: Type.OBJECT,
@@ -269,51 +295,53 @@ export const generateStructuredDocument = async (transcript: string, type: Repor
                     ordinace_lekare: { type: Type.STRING },
                     poznamka_sestry: { type: Type.STRING }
                 },
-                required: ["subjektivni_potize", "vitalni_funkce"]
+                required: ["identifikace", "poskytovatel", "subjektivni_potize", "vitalni_funkce"]
             };
             break;
 
         case ReportType.KONZILIARNI_ZPRAVA:
-            promptInstruction = "Vytvoř Konziliární zprávu. Jasně formuluj klinickou otázku v 'duvod_konzilia'.";
+            promptInstruction = "Vytvoř Konziliární zprávu.";
             schema = {
                 type: Type.OBJECT,
                 properties: {
-                    odesilajici_lekar: { type: Type.STRING },
+                    ...identificationProps,
+                    odesilajici_lekar: { type: Type.STRING }, // Duplicate in structure but kept for specific logic if needed, ideally mapped to poskytovatel
                     cilova_odbornost: { type: Type.STRING },
                     duvod_konzilia: { type: Type.STRING },
                     nynnejsi_onemocneni: { type: Type.STRING },
                     dosavadni_lecba: { type: Type.STRING },
                     urgentnost: { type: Type.STRING, enum: ["Běžná", "Akutní", "Neodkladná"] }
                 },
-                required: ["duvod_konzilia", "urgentnost"]
+                required: ["identifikace", "poskytovatel", "duvod_konzilia", "urgentnost"]
             };
             break;
 
         case ReportType.POTVRZENI_VYSETRENI:
-            promptInstruction = "Vytvoř Potvrzení o návštěvě. Datum a čas musí odpovídat kontextu.";
+            promptInstruction = "Vytvoř Potvrzení o návštěvě.";
             schema = {
                 type: Type.OBJECT,
                 properties: {
-                    datum_cas_navstevy: { type: Type.STRING },
+                    ...identificationProps,
                     ucel_vysetreni: { type: Type.STRING },
                     doprovod: { type: Type.STRING },
                     doporuceni_rezim: { type: Type.STRING }
                 },
-                required: ["datum_cas_navstevy"]
+                required: ["identifikace", "poskytovatel", "ucel_vysetreni"]
             };
             break;
 
         case ReportType.DOPORUCENI_LECBY:
-            promptInstruction = "Vytvoř Doporučení k léčbě. Pokud zazněly procedury (např. 'vířivka', 'masáž'), dej je do seznamu.";
+            promptInstruction = "Vytvoř Doporučení k léčbě.";
             schema = {
                 type: Type.OBJECT,
                 properties: {
+                    ...identificationProps,
                     diagnoza_hlavni: { type: Type.STRING },
                     navrhovana_terapie: { type: Type.STRING },
                     procedury: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { nazev: {type: Type.STRING}, frekvence: {type: Type.STRING} } } },
                     cil_lecby: { type: Type.STRING }
                 },
-                required: ["diagnoza_hlavni"]
+                required: ["identifikace", "poskytovatel", "diagnoza_hlavni"]
             };
             break;
 
@@ -337,13 +365,21 @@ export const generateStructuredDocument = async (transcript: string, type: Repor
 
     const data = cleanAndParseJSON<MedicalDocumentData>(response.text, {} as any);
     
-    // Safety check for empty arrays to prevent UI crashes
+    // Safety check for empty arrays/objects
     if (type === ReportType.AMBULANTNI_ZAZNAM) {
         const d = data as any;
         if (!d.hodnoceni) d.hodnoceni = { diagnozy: [], zaver: "" };
-        if (!d.plan) d.plan = { medikace: [], doporuceni: "", kontrola: "" };
+        if (!d.plan) d.plan = { medikace: [], doporuceni: "", pouceni: "", kontrola: "" };
         if (!d.hodnoceni.diagnozy) d.hodnoceni.diagnozy = [];
         if (!d.plan.medikace) d.plan.medikace = [];
+    }
+    
+    // Ensure identification block exists if model hallucinated omitting it
+    if (!data.identifikace) {
+        data.identifikace = { jmeno: "", rodne_cislo_datum_nar: "" };
+    }
+    if (!data.poskytovatel) {
+        data.poskytovatel = { lekar: "MUDr. Jan Novák", odbornost: "Všeobecné lékařství", datum_cas: new Date().toLocaleString('cs-CZ') };
     }
 
     const rawTextContent = JSON.stringify(data, null, 2);

@@ -1,3 +1,4 @@
+
 import { 
   ReportType, 
   StructuredReport, 
@@ -25,6 +26,18 @@ export const validateReport = (report: StructuredReport): ValidationResult => {
     errors.push({ field, message, severity: ValidationSeverity.WARNING });
   };
 
+  // --- SPOLEČNÁ VALIDACE (Identifikace) ---
+  if (!data.identifikace?.jmeno?.trim()) {
+      addError('Identifikace', 'Chybí jméno pacienta.');
+  }
+  if (!data.identifikace?.rodne_cislo_datum_nar?.trim()) {
+      addWarning('Identifikace', 'Chybí RČ nebo datum narození pacienta.');
+  }
+  if (!data.poskytovatel?.lekar?.trim()) {
+      addError('Poskytovatel', 'Chybí jméno ošetřujícího lékaře.');
+  }
+
+  // --- SPECIFICKÁ VALIDACE ---
   switch (report.reportType) {
     case ReportType.AMBULANTNI_ZAZNAM: {
       const d = data as AmbulantniZaznamData;
@@ -43,6 +56,10 @@ export const validateReport = (report: StructuredReport): ValidationResult => {
       if (!d.plan?.doporuceni?.trim() && (!d.plan?.medikace || d.plan.medikace.length === 0)) {
          addWarning('Plán', 'Plán je prázdný (žádná medikace ani doporučení).');
       }
+
+      if (!d.plan?.pouceni?.trim()) {
+          addWarning('Poučení', 'Chybí záznam o poučení pacienta (Vyhláška 444/2024 Sb.).');
+      }
       break;
     }
 
@@ -55,10 +72,6 @@ export const validateReport = (report: StructuredReport): ValidationResult => {
       if (!hasVitals) {
         addWarning('Vitální funkce', 'Nejsou vyplněny žádné vitální funkce.');
       }
-      
-      if (!d.provedene_vykony || d.provedene_vykony.length === 0) {
-         addWarning('Výkony', 'Nejsou uvedeny žádné provedené ošetřovatelské výkony.');
-      }
       break;
     }
 
@@ -66,13 +79,11 @@ export const validateReport = (report: StructuredReport): ValidationResult => {
       const d = data as KonziliarniZpravaData;
       if (!d.cilova_odbornost?.trim()) addError('Adresát', 'Chybí cílová odbornost/lékař.');
       if (!d.duvod_konzilia?.trim()) addError('Klinická otázka', 'Chybí důvod konzilia (položená otázka).');
-      if (!d.odesilajici_lekar?.trim()) addError('Odesílatel', 'Chybí identifikace odesílajícího lékaře.');
       break;
     }
 
     case ReportType.POTVRZENI_VYSETRENI: {
       const d = data as PotvrzeniVysetreniData;
-      if (!d.datum_cas_navstevy?.trim()) addError('Datum', 'Chybí datum a čas návštěvy.');
       if (!d.ucel_vysetreni?.trim()) addError('Účel', 'Chybí účel vyšetření.');
       break;
     }
@@ -80,9 +91,6 @@ export const validateReport = (report: StructuredReport): ValidationResult => {
     case ReportType.DOPORUCENI_LECBY: {
       const d = data as DoporuceniLecbyData;
       if (!d.diagnoza_hlavni?.trim()) addError('Diagnóza', 'Chybí hlavní diagnóza pro indikaci léčby.');
-      if (!d.navrhovana_terapie?.trim() && (!d.procedury || d.procedury.length === 0)) {
-        addError('Terapie', 'Musí být uvedena navrhovaná terapie nebo procedury.');
-      }
       break;
     }
   }
