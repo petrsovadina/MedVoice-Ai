@@ -12,16 +12,14 @@ import {
     ValidationResult,
     ValidationSeverity
 } from '../types';
-import { FileText, Tags, Printer, RefreshCw, Stethoscope, Pill, Save, Edit3, ShieldCheck, AlertTriangle, AlertCircle, Copy, Check, FileJson, Plus, Trash2, ArrowRightCircle } from 'lucide-react';
+import { FileText, Tags, Printer, RefreshCw, Stethoscope, Pill, Save, Edit3, ShieldCheck, AlertTriangle, AlertCircle, Copy, Check } from 'lucide-react';
 import { jsPDF } from "jspdf";
-import { downloadJSON } from '../services/storageService';
 
 interface AnalysisDisplayProps {
   entities: MedicalEntity[];
   report: StructuredReport;
   validationResult: ValidationResult;
   onReportChange: (report: StructuredReport) => void;
-  onEntitiesChange: (entities: MedicalEntity[]) => void;
   onRegenerateReport: (type: ReportType) => Promise<void>;
   isRegenerating: boolean;
 }
@@ -101,20 +99,13 @@ const ValidationStatus = ({ result }: { result: ValidationResult }) => {
 };
 
 export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ 
-    entities, report, validationResult, onReportChange, onEntitiesChange, onRegenerateReport, isRegenerating
+    entities, report, validationResult, onReportChange, onRegenerateReport, isRegenerating
 }) => {
   const [activeTab, setActiveTab] = useState<'report' | 'entities'>('report');
   const [copied, setCopied] = useState(false);
-  const [entitiesChanged, setEntitiesChanged] = useState(false);
   
   const handleTypeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
       await onRegenerateReport(e.target.value as ReportType);
-  };
-
-  const handleUpdateDocumentFromEntities = async () => {
-      await onRegenerateReport(report.reportType);
-      setEntitiesChanged(false);
-      setActiveTab('report');
   };
 
   const updateData = (path: string[], value: any) => {
@@ -126,65 +117,6 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       }
       current[path[path.length - 1]] = value;
       onReportChange({ ...report, data: newData });
-  };
-
-  // Entity Management
-  const updateEntity = (index: number, text: string) => {
-      const newEntities = [...entities];
-      newEntities[index].text = text;
-      onEntitiesChange(newEntities);
-      setEntitiesChanged(true);
-  };
-
-  const addEntity = (category: MedicalEntity['category']) => {
-      const newEntities = [...entities, { category, text: '', confidence: 1 }];
-      onEntitiesChange(newEntities);
-      setEntitiesChanged(true);
-  };
-
-  const removeEntity = (index: number) => {
-      const newEntities = [...entities];
-      newEntities.splice(index, 1);
-      onEntitiesChange(newEntities);
-      setEntitiesChanged(true);
-  };
-
-  const renderEntityGroup = (category: MedicalEntity['category'], label: string, icon: React.ReactNode, colorClass: string) => {
-      const groupEntities = entities.map((e, i) => ({ ...e, originalIndex: i })).filter(e => e.category === category);
-      
-      return (
-        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2 flex justify-between items-center">
-                <span className="flex items-center gap-2">{icon} {label}</span>
-                <button 
-                    onClick={() => addEntity(category)}
-                    className="p-1 hover:bg-slate-100 rounded text-primary-600 transition-colors"
-                    title="Přidat položku"
-                >
-                    <Plus size={16} />
-                </button>
-            </h4>
-            <div className="space-y-3">
-                {groupEntities.length === 0 && <span className="text-sm text-slate-400 italic block py-2">Žádné záznamy</span>}
-                {groupEntities.map((e, i) => (
-                    <div key={i} className={`flex items-center gap-2 p-2 rounded border ${colorClass}`}>
-                        <input 
-                            className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium outline-none"
-                            value={e.text}
-                            onChange={(evt) => updateEntity(e.originalIndex, evt.target.value)}
-                            placeholder="Zadejte text..."
-                        />
-                        <button 
-                            onClick={() => removeEntity(e.originalIndex)}
-                            className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                        >
-                            <Trash2 size={14} />
-                        </button>
-                    </div>
-                ))}
-            </div>
-        </div>
-      );
   };
 
   const formatReportToText = (): string => {
@@ -205,6 +137,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           content += `Doporučení: ${d.plan?.doporuceni || '-'}\n`;
           content += `Poučení: ${d.plan?.pouceni || '-'}\n`;
       } 
+      // ... (Generic fallback for other types)
       else {
           content += JSON.stringify(data, null, 2);
       }
@@ -223,303 +156,143 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       }
   };
 
-  const handleDownloadJSON = () => {
-      downloadJSON(report, `MedVoice_${report.reportType}_${new Date().toISOString().slice(0,10)}`);
-  };
-
   const downloadPDF = () => {
-    const doc = new jsPDF({
-        format: 'a4',
-        unit: 'mm'
-    });
-    
+    const doc = new jsPDF();
     const data = report.data;
     const type = report.reportType;
-    
-    // Layout Constants
-    const margin = 20;
-    const pageWidth = doc.internal.pageSize.width; // 210mm
-    const pageHeight = doc.internal.pageSize.height; // 297mm
-    const contentWidth = pageWidth - (margin * 2);
-    let yPos = margin;
+    let yPos = 20;
 
-    // Colors
-    const colorPrimary = [2, 132, 199];   // primary-600
-    const colorText = [30, 41, 59];       // slate-800
-    const colorTextLight = [100, 116, 139]; // slate-500
-    const colorBorder = [203, 213, 225];  // slate-300
-    const colorFill = [241, 245, 249];    // slate-100
-
-    // --- Helpers ---
-
-    const checkPageBreak = (heightNeeded: number) => {
-        if (yPos + heightNeeded > pageHeight - 20) {
-            doc.addPage();
-            yPos = margin + 10; // Extra space on new page
-            return true;
-        }
-        return false;
-    };
-
-    const drawHeader = () => {
-        doc.setFillColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
-        doc.rect(0, 0, pageWidth, 5, 'F');
-        yPos += 5;
-
-        // Clinic Info
-        doc.setFontSize(10);
+    const addHeader = (title: string) => {
+        // Poskytovatel Header
+        doc.setFontSize(14);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(colorText[0], colorText[1], colorText[2]);
-        doc.text(data.poskytovatel?.lekar || "MedVoice Clinic", pageWidth - margin, yPos + 5, { align: "right" });
-        
+        doc.setTextColor(33, 37, 41);
+        doc.text("MedVoice Clinic, s.r.o.", 20, yPos);
+        yPos += 6;
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(colorTextLight[0], colorTextLight[1], colorTextLight[2]);
-        doc.text(data.poskytovatel?.odbornost || "Všeobecné lékařství", pageWidth - margin, yPos + 10, { align: "right" });
-        doc.text(data.poskytovatel?.datum_cas || new Date().toLocaleString(), pageWidth - margin, yPos + 15, { align: "right" });
+        doc.setTextColor(100);
+        doc.text(`${data.poskytovatel?.lekar || "MUDr. Jan Novák"} | ${data.poskytovatel?.odbornost || "Všeobecné lékařství"}`, 20, yPos);
+        yPos += 10;
 
-        // Title
+        // Pacient Header (Legislativní požadavek)
+        doc.setDrawColor(200);
+        doc.line(20, yPos, 190, yPos);
+        yPos += 5;
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+        doc.text(`Pacient: ${data.identifikace?.jmeno || "Neznámý"}`, 20, yPos);
+        doc.text(`Dat. nar./RČ: ${data.identifikace?.rodne_cislo_datum_nar || "-"}`, 120, yPos);
+        yPos += 6;
+        doc.text(`Pojišťovna: ${data.identifikace?.pojistovna || "-"}`, 20, yPos);
+        doc.text(`Datum: ${data.poskytovatel?.datum_cas || new Date().toLocaleString()}`, 120, yPos);
+        yPos += 5;
+        doc.line(20, yPos, 190, yPos);
+        yPos += 15;
+        
+        // Document Title
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
-        const title = REPORT_LABELS[type].toUpperCase();
-        // Wraps title if too long
-        const splitTitle = doc.splitTextToSize(title, 120);
-        doc.text(splitTitle, margin, yPos + 10);
-        
-        yPos += Math.max(25, splitTitle.length * 8 + 10);
-        
-        doc.setDrawColor(colorBorder[0], colorBorder[1], colorBorder[2]);
-        doc.setLineWidth(0.5);
-        doc.line(margin, yPos, pageWidth - margin, yPos);
-        yPos += 5;
+        doc.setTextColor(0);
+        doc.text(title.toUpperCase(), 105, yPos, { align: "center" });
+        yPos += 15;
     };
 
-    const drawPatientBox = () => {
-        const boxHeight = 22;
-        const colWidth = contentWidth / 3;
-
-        doc.setFillColor(colorFill[0], colorFill[1], colorFill[2]);
-        doc.rect(margin, yPos, contentWidth, 8, 'F');
-
-        doc.setDrawColor(colorBorder[0], colorBorder[1], colorBorder[2]);
-        doc.rect(margin, yPos, contentWidth, boxHeight);
-        doc.line(margin, yPos + 8, pageWidth - margin, yPos + 8);
-        doc.line(margin + colWidth, yPos, margin + colWidth, yPos + boxHeight);
-        doc.line(margin + (colWidth * 2), yPos, margin + (colWidth * 2), yPos + boxHeight);
-
-        // Labels
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(colorTextLight[0], colorTextLight[1], colorTextLight[2]);
-        doc.text("PACIENT", margin + 2, yPos + 5);
-        doc.text("RČ / DATUM NAROZENÍ", margin + colWidth + 2, yPos + 5);
-        doc.text("POJIŠŤOVNA", margin + (colWidth * 2) + 2, yPos + 5);
-
-        // Values
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(colorText[0], colorText[1], colorText[2]);
-        
-        const name = doc.splitTextToSize(data.identifikace?.jmeno || "", colWidth - 4);
-        const rc = doc.splitTextToSize(data.identifikace?.rodne_cislo_datum_nar || "", colWidth - 4);
-        const ins = doc.splitTextToSize(data.identifikace?.pojistovna || "", colWidth - 4);
-
-        doc.text(name, margin + 2, yPos + 14);
-        doc.text(rc, margin + colWidth + 2, yPos + 14);
-        doc.text(ins, margin + (colWidth * 2) + 2, yPos + 14);
-
-        yPos += boxHeight + 10;
-    };
-
-    const drawSectionHeader = (label: string) => {
-        checkPageBreak(15);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
-        doc.text(label.toUpperCase(), margin, yPos);
-        doc.setDrawColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
-        doc.setLineWidth(0.2);
-        doc.line(margin, yPos + 1.5, margin + 20, yPos + 1.5);
-        yPos += 7;
-    };
-
-    const drawTextBlock = (text: string | undefined, italic = false) => {
+    const addSection = (label: string, text: string | undefined, isBold = false) => {
         if (!text) return;
+        if (yPos > 270) { doc.addPage(); yPos = 20; }
         doc.setFontSize(10);
-        doc.setFont("helvetica", italic ? "italic" : "normal");
-        doc.setTextColor(colorText[0], colorText[1], colorText[2]);
-        
-        const splitText = doc.splitTextToSize(text, contentWidth);
-        if (checkPageBreak(splitText.length * 5)) {
-            // reprint header if needed logic
-        }
-        doc.text(splitText, margin, yPos);
-        yPos += (splitText.length * 5) + 5;
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(100);
+        doc.text(label.toUpperCase(), 20, yPos);
+        yPos += 5;
+        doc.setFontSize(11);
+        doc.setFont("helvetica", isBold ? "bold" : "normal");
+        doc.setTextColor(0);
+        const splitText = doc.splitTextToSize(text, 170);
+        doc.text(splitText, 20, yPos);
+        yPos += (splitText.length * 6) + 5;
     };
 
-    // --- Content Generation ---
+    const addFooter = (signatureLabel: string = "Razítko a podpis lékaře") => {
+        const pageHeight = doc.internal.pageSize.height;
+        yPos = pageHeight - 40;
+        doc.setLineWidth(0.5);
+        doc.line(130, yPos, 190, yPos);
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        doc.text(signatureLabel, 160, yPos + 5, { align: "center" });
+        doc.text("Vygenerováno systémem MedVoice AI", 105, pageHeight - 10, { align: "center" });
+    };
 
-    drawHeader();
-    drawPatientBox();
+    addHeader(REPORT_LABELS[type]);
 
     if (type === ReportType.AMBULANTNI_ZAZNAM) {
         const d = data as AmbulantniZaznamData;
-        
-        drawSectionHeader("Subjektivně");
-        drawTextBlock(d.subjektivni);
-        
-        drawSectionHeader("Objektivně");
-        drawTextBlock(d.objektivni);
-
+        addSection("Subjektivně (S)", d.subjektivni);
+        addSection("Objektivně (O)", d.objektivni);
         if (d.hodnoceni?.diagnozy?.length) {
-            checkPageBreak(20);
-            drawSectionHeader("Hodnocení");
+            doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(100);
+            doc.text("HODNOCENÍ (A)", 20, yPos); yPos += 6;
             d.hodnoceni.diagnozy.forEach(dg => {
-                doc.setFont("helvetica", "bold");
-                const codeWidth = 25;
-                // Calculate height of description
-                const descLines = doc.splitTextToSize(dg.nazev, contentWidth - codeWidth - 2);
-                const heightNeeded = Math.max(6, descLines.length * 5);
-                
-                checkPageBreak(heightNeeded + 2);
-
-                doc.text(dg.kod, margin, yPos);
+                doc.setFont("helvetica", "bold"); doc.setTextColor(0);
+                doc.text(`${dg.kod}`, 25, yPos);
                 doc.setFont("helvetica", "normal");
-                doc.text(descLines, margin + codeWidth, yPos);
-                yPos += heightNeeded + 2;
+                doc.text(`- ${dg.nazev}`, 45, yPos);
+                yPos += 6;
             });
             yPos += 2;
-            if (d.hodnoceni.zaver) {
-                drawTextBlock(`Závěr: ${d.hodnoceni.zaver}`, true);
-            }
+            doc.setFont("helvetica", "italic");
+            const zaverLines = doc.splitTextToSize(d.hodnoceni.zaver, 170);
+            doc.text(zaverLines, 20, yPos);
+            yPos += (zaverLines.length * 6) + 8;
         }
-
         if (d.plan) {
-            checkPageBreak(20);
-            drawSectionHeader("Plán péče");
-            if (d.plan.medikace?.length) {
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(9);
-                doc.text("Medikace:", margin, yPos);
-                yPos += 5;
-                doc.setFont("helvetica", "normal");
-                d.plan.medikace.forEach(m => {
-                    const dosageWidth = 40;
-                    const nameWidth = contentWidth - dosageWidth - 5;
-                    const nameLines = doc.splitTextToSize(`• ${m.nazev}`, nameWidth);
-                    const dosageLines = doc.splitTextToSize(m.davkovani, dosageWidth);
-                    
-                    const heightNeeded = Math.max(6, Math.max(nameLines.length, dosageLines.length) * 5);
-                    checkPageBreak(heightNeeded + 2);
-
-                    doc.text(nameLines, margin + 2, yPos);
-                    doc.text(dosageLines, pageWidth - margin, yPos, { align: "right" });
-                    yPos += heightNeeded + 2;
-                });
-                yPos += 3;
-            }
+            doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(100);
+            doc.text("PLÁN (P)", 20, yPos); yPos += 6;
+            d.plan.medikace?.forEach(m => {
+                doc.setTextColor(0); doc.setFont("helvetica", "normal");
+                doc.text(`• ${m.nazev} (${m.davkovani})`, 25, yPos); yPos += 6;
+            });
             if (d.plan.doporuceni) {
-                 doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-                 doc.text("Doporučení:", margin, yPos); yPos += 5;
-                 drawTextBlock(d.plan.doporuceni);
-            }
-            if (d.plan.kontrola) {
-                checkPageBreak(10);
-                doc.setFont("helvetica", "bold");
-                doc.text(`Kontrola: ${d.plan.kontrola}`, margin, yPos);
-                yPos += 10;
+                const recLines = doc.splitTextToSize(`Doporučení: ${d.plan.doporuceni}`, 170);
+                doc.text(recLines, 20, yPos); yPos += (recLines.length * 6) + 4;
             }
             if (d.plan.pouceni) {
-                 drawSectionHeader("Poučení");
-                 drawTextBlock(d.plan.pouceni);
+                addSection("Poučení pacienta", d.plan.pouceni);
+            }
+             if (d.plan.kontrola) {
+                doc.text(`Kontrola: ${d.plan.kontrola}`, 20, yPos); yPos += 10;
             }
         }
-    } else if (type === ReportType.OSETR_ZAZNAM) {
+        addFooter();
+    }
+    else if (type === ReportType.OSETR_ZAZNAM) {
         const d = data as OsetrovatelskyZaznamData;
-        drawSectionHeader("Subjektivní potíže");
-        drawTextBlock(d.subjektivni_potize);
-
-        checkPageBreak(30);
-        drawSectionHeader("Vitální funkce");
-        doc.setFillColor(colorFill[0], colorFill[1], colorFill[2]);
-        doc.rect(margin, yPos, contentWidth, 15, 'F');
-        doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-        
-        const colW = contentWidth / 4;
-        // Centered headers
-        doc.text("TK", margin + (colW/2), yPos + 6, {align: "center"});
-        doc.text("Pulz", margin + colW + (colW/2), yPos + 6, {align: "center"});
-        doc.text("Teplota", margin + (colW*2) + (colW/2), yPos + 6, {align: "center"});
-        doc.text("SpO2", margin + (colW*3) + (colW/2), yPos + 6, {align: "center"});
-
-        doc.setFont("helvetica", "normal"); doc.setFontSize(11);
-        // Centered values
-        doc.text(d.vitalni_funkce?.tk || "--", margin + (colW/2), yPos + 12, {align: "center"});
-        doc.text(d.vitalni_funkce?.p || "--", margin + colW + (colW/2), yPos + 12, {align: "center"});
-        doc.text(d.vitalni_funkce?.tt || "--", margin + (colW*2) + (colW/2), yPos + 12, {align: "center"});
-        doc.text(d.vitalni_funkce?.spo2 || "--", margin + (colW*3) + (colW/2), yPos + 12, {align: "center"});
-        yPos += 20;
-
-        if(d.provedene_vykony?.length) {
-             drawSectionHeader("Provedené výkony");
-             d.provedene_vykony.forEach(v => {
-                 checkPageBreak(6);
-                 doc.setFont("helvetica", "mono");
-                 doc.text(v.cas || "--:--", margin, yPos);
-                 doc.setFont("helvetica", "normal");
-                 doc.text(v.nazev, margin + 25, yPos);
-                 yPos += 6;
-             });
-             yPos += 5;
+        addSection("Subjektivní potíže", d.subjektivni_potize);
+        doc.setFillColor(245, 247, 250);
+        doc.rect(20, yPos, 170, 20, 'F');
+        doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(100);
+        doc.text("TK", 30, yPos + 8); doc.text("Pulz", 80, yPos + 8); doc.text("Teplota", 130, yPos + 8);
+        doc.setFontSize(12); doc.setTextColor(0);
+        doc.text(d.vitalni_funkce?.tk || "-", 30, yPos + 15); doc.text(d.vitalni_funkce?.p || "-", 80, yPos + 15); doc.text(d.vitalni_funkce?.tt || "-", 130, yPos + 15);
+        yPos += 30;
+        if (d.provedene_vykony?.length) {
+            addSection("Provedené výkony", "");
+            d.provedene_vykony.forEach(v => {
+                doc.text(`${v.cas || '--:--'}  ${v.nazev}`, 25, yPos);
+                yPos += 6;
+            });
+            yPos += 10;
         }
-        drawSectionHeader("Poznámka sestry");
-        drawTextBlock(d.poznamka_sestry);
-
-    } else if (type === ReportType.KONZILIARNI_ZPRAVA) {
-        const d = data as KonziliarniZpravaData;
-        
-        doc.setDrawColor(251, 191, 36); 
-        doc.setFillColor(255, 251, 235);
-        doc.roundedRect(margin, yPos, contentWidth, 12, 1, 1, 'FD');
-        doc.setFont("helvetica", "bold"); doc.setTextColor(180, 83, 9);
-        doc.text(`URGENTNOST: ${d.urgentnost.toUpperCase()}`, margin + 5, yPos + 8);
-        doc.text(`CÍL: ${d.cilova_odbornost}`, pageWidth - margin - 5, yPos + 8, { align: "right" });
-        yPos += 18;
-
-        drawSectionHeader("Důvod konzilia (Otázka)");
-        drawTextBlock(d.duvod_konzilia);
-        drawSectionHeader("Nynější onemocnění");
-        drawTextBlock(d.nynnejsi_onemocneni);
-        drawSectionHeader("Dosavadní léčba");
-        drawTextBlock(d.dosavadni_lecba);
-
-    } else {
-        const text = JSON.stringify(data, null, 2).replace(/[{}"],/g, '');
-        drawTextBlock(text);
+        addSection("Poznámka sestry", d.poznamka_sestry);
+        addFooter("Podpis sestry");
     }
-
-    // --- Footer ---
-    const pageCount = doc.getNumberOfPages();
-    for(let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setDrawColor(colorBorder[0], colorBorder[1], colorBorder[2]);
-        doc.setLineWidth(0.2);
-        doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
-        doc.setFontSize(8);
-        doc.setTextColor(colorTextLight[0], colorTextLight[1], colorTextLight[2]);
-        doc.text("Generováno systémem MedVoice AI", margin, pageHeight - 10);
-        doc.text(`Strana ${i} / ${pageCount}`, pageWidth - margin, pageHeight - 10, { align: "right" });
-        
-        if (i === pageCount) {
-             const sigY = pageHeight - 35;
-             doc.setDrawColor(colorText[0], colorText[1], colorText[2]);
-             doc.setLineWidth(0.2);
-             doc.line(pageWidth - margin - 60, sigY, pageWidth - margin, sigY);
-             doc.setFontSize(8);
-             doc.text("Razítko a podpis lékaře", pageWidth - margin - 30, sigY + 4, { align: "center" });
-        }
+    else {
+        // Fallback
+        const textLines = doc.splitTextToSize(JSON.stringify(data, null, 2), 170);
+        doc.text(textLines, 20, yPos);
     }
-
     doc.save(`MedVoice_${type}_${new Date().toISOString().slice(0,10)}.pdf`);
   };
 
@@ -596,7 +369,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               <h4 className="text-xs font-bold text-blue-700 uppercase mb-3">Hodnocení (A)</h4>
               <div className="space-y-2 mb-3">
                   {data.hodnoceni?.diagnozy?.map((d, i) => (
-                      <div key={i} className="flex gap-2 items-center bg-white p-2 rounded shadow-sm border border-blue-100">
+                      <div key={i} className="flex gap-2 items-center">
                           <input 
                               className="w-20 p-1 text-sm font-bold text-blue-900 border border-blue-200 rounded bg-white"
                               value={d.kod}
@@ -626,7 +399,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                   {data.plan?.medikace?.map((m, i) => (
                       <div key={i} className="flex gap-2 items-center bg-white p-2 rounded border border-green-100 shadow-sm">
                           <input 
-                              className="flex-1 text-sm font-medium text-slate-800 outline-none bg-transparent"
+                              className="flex-1 text-sm font-medium text-slate-800 outline-none bg-white"
                               value={m.nazev}
                               onChange={(e) => {
                                   const newMed = [...data.plan.medikace];
@@ -635,7 +408,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                               }}
                           />
                           <input 
-                              className="w-32 text-sm text-slate-500 text-right outline-none bg-transparent"
+                              className="w-32 text-sm text-slate-500 text-right outline-none bg-slate-50 rounded px-1"
                               value={m.davkovani}
                               onChange={(e) => {
                                   const newMed = [...data.plan.medikace];
@@ -653,20 +426,22 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       </div>
   );
 
+  // ... (Other render functions remain similar but use updateData with new structure if needed)
+  
   const renderOsetrovatelsky = (data: OsetrovatelskyZaznamData) => (
       <div className="space-y-4">
           <EditableArea label="Subjektivní potíže" value={data.subjektivni_potize} onChange={(v) => updateData(['subjektivni_potize'], v)} />
           <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50 border rounded-lg">
-              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="TK" value={data.vitalni_funkce?.tk} onChange={(v) => updateData(['vitalni_funkce', 'tk'], v)} inputClassName="bg-transparent" />
-              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Pulz" value={data.vitalni_funkce?.p} onChange={(v) => updateData(['vitalni_funkce', 'p'], v)} inputClassName="bg-transparent" />
-              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Teplota" value={data.vitalni_funkce?.tt} onChange={(v) => updateData(['vitalni_funkce', 'tt'], v)} inputClassName="bg-transparent" />
+              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="TK" value={data.vitalni_funkce?.tk} onChange={(v) => updateData(['vitalni_funkce', 'tk'], v)} inputClassName="bg-white" />
+              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Pulz" value={data.vitalni_funkce?.p} onChange={(v) => updateData(['vitalni_funkce', 'p'], v)} inputClassName="bg-white" />
+              <EditableInput className="mb-0 bg-white p-2 rounded shadow-sm" label="Teplota" value={data.vitalni_funkce?.tt} onChange={(v) => updateData(['vitalni_funkce', 'tt'], v)} inputClassName="bg-white" />
           </div>
           <div className="p-4 border rounded-lg">
               <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Provedené výkony</h4>
               {data.provedene_vykony?.map((v, i) => (
-                  <div key={i} className="flex gap-2 mb-2 items-center bg-white p-1 rounded border border-slate-100">
+                  <div key={i} className="flex gap-2 mb-2 items-center">
                        <input 
-                          className="w-20 text-xs font-mono text-slate-500 bg-slate-50 rounded p-1 text-center"
+                          className="w-20 text-xs font-mono text-slate-500 bg-slate-100 rounded p-1 text-center"
                           value={v.cas || ''}
                           onChange={(e) => {
                               const newVyk = [...data.provedene_vykony];
@@ -676,7 +451,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                           placeholder="Čas"
                        />
                        <input 
-                          className="flex-1 text-sm border-none outline-none bg-transparent px-2"
+                          className="flex-1 text-sm border-b border-transparent hover:border-slate-200 focus:border-primary-300 outline-none transition-colors"
                           value={v.nazev}
                           onChange={(e) => {
                               const newVyk = [...data.provedene_vykony];
@@ -733,7 +508,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   
   const renderDoporuceni = (data: DoporuceniLecbyData) => (
       <div className="space-y-4">
-          <EditableInput label="Hlavní diagnóza" value={data.diagnoza_hlavni} onChange={(v) => updateData(['diagnoza_hlavni'], v)} inputClassName="bg-transparent" />
+          <EditableInput label="Hlavní diagnóza" value={data.diagnoza_hlavni} onChange={(v) => updateData(['diagnoza_hlavni'], v)} />
           <EditableArea label="Cíl léčby" value={data.cil_lecby} onChange={(v) => updateData(['cil_lecby'], v)} />
           <EditableArea label="Navrhovaná terapie" value={data.navrhovana_terapie} onChange={(v) => updateData(['navrhovana_terapie'], v)} />
           <div className="p-4 bg-slate-50 border rounded-lg">
@@ -741,7 +516,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               {data.procedury?.map((p, i) => (
                   <div key={i} className="flex gap-2 mb-2 items-center bg-white p-2 border rounded shadow-sm">
                       <input 
-                          className="flex-1 text-sm font-medium outline-none bg-transparent"
+                          className="flex-1 text-sm font-medium outline-none"
                           value={p.nazev}
                           onChange={(e) => {
                               const newProc = [...data.procedury];
@@ -750,7 +525,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                           }}
                       />
                       <input 
-                          className="w-24 text-sm text-slate-500 text-right outline-none bg-transparent"
+                          className="w-24 text-sm text-slate-500 text-right outline-none"
                           value={p.frekvence}
                           onChange={(e) => {
                               const newProc = [...data.procedury];
@@ -768,10 +543,7 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     <div className="flex flex-col h-full bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
       <div className="flex border-b border-slate-200 bg-white">
         <button onClick={() => setActiveTab('report')} className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'report' ? 'text-primary-700 border-b-2 border-primary-600 bg-primary-50/10' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={16} className="inline mr-2"/> Dokument</button>
-        <button onClick={() => setActiveTab('entities')} className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'entities' ? 'text-primary-700 border-b-2 border-primary-600 bg-primary-50/10' : 'text-slate-500 hover:bg-slate-50'}`}>
-            <Tags size={16} className="inline mr-2"/> Entity
-            {entitiesChanged && <span className="ml-2 w-2 h-2 rounded-full bg-amber-500 inline-block" />}
-        </button>
+        <button onClick={() => setActiveTab('entities')} className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'entities' ? 'text-primary-700 border-b-2 border-primary-600 bg-primary-50/10' : 'text-slate-500 hover:bg-slate-50'}`}><Tags size={16} className="inline mr-2"/> Entity</button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-100 relative custom-scrollbar">
@@ -793,13 +565,6 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                  <div className="flex items-center gap-2">
                      <ValidationStatus result={validationResult} />
                      <div className="flex gap-1">
-                        <button 
-                            onClick={handleDownloadJSON}
-                            className="flex items-center gap-2 px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-md text-sm hover:bg-slate-50 transition-colors shadow-sm"
-                            title="Exportovat data do JSON (pro NIS)"
-                        >
-                             <FileJson size={16} />
-                        </button>
                         <button 
                             onClick={copyToClipboard}
                             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors border shadow-sm ${copied ? 'bg-green-600 text-white border-green-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
@@ -849,27 +614,39 @@ export const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
         {/* Entities Tab */}
         {activeTab === 'entities' && (
            <div className="space-y-4 max-w-4xl mx-auto">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h3 className="font-bold text-slate-700 text-lg flex items-center gap-2"><Stethoscope size={24} className="text-primary-600" /> Editace Entit</h3>
-                    <p className="text-slate-500 text-sm">Upravte detekované entity a přegenerujte dokument pro vyšší přesnost.</p>
-                </div>
-                <button 
-                    onClick={handleUpdateDocumentFromEntities}
-                    disabled={!entitiesChanged}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold shadow-md transition-all transform hover:scale-105 ${entitiesChanged ? 'bg-primary-600 text-white hover:bg-primary-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
-                >
-                    <ArrowRightCircle size={20} />
-                    Aktualizovat dokument dle entit
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {renderEntityGroup('DIAGNOSIS', 'Diagnózy (ICD-10)', <FileText size={14} />, 'bg-slate-50 border-slate-200')}
-                  {renderEntityGroup('MEDICATION', 'Medikace', <Pill size={14} />, 'bg-blue-50 border-blue-100 text-blue-900')}
-                  {renderEntityGroup('SYMPTOM', 'Subjektivní příznaky', <AlertCircle size={14} />, 'bg-amber-50 border-amber-100 text-amber-900')}
-                  {renderEntityGroup('PII', 'Osobní údaje', <ShieldCheck size={14} />, 'bg-purple-50 border-purple-100 text-purple-900')}
-                  {renderEntityGroup('OTHER', 'Ostatní', <Tags size={14} />, 'bg-gray-50 border-gray-200 text-gray-700')}
+              <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-4"><Stethoscope size={20} className="text-primary-600" /> Detekované klinické entity</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">Diagnózy (ICD-10)</h4>
+                      <div className="space-y-2">
+                          {entities.filter(e => e.category === 'DIAGNOSIS').length === 0 && <span className="text-sm text-slate-400 italic">Žádné diagnózy nenalezeny</span>}
+                          {entities.filter(e => e.category === 'DIAGNOSIS').map((e, i) => (
+                              <div key={i} className="text-sm p-2 bg-slate-50 rounded text-slate-700 font-medium">{e.text}</div>
+                          ))}
+                      </div>
+                  </div>
+                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2 flex justify-between items-center">
+                          Medikace <Pill size={14} />
+                      </h4>
+                      <div className="space-y-2">
+                          {entities.filter(e => e.category === 'MEDICATION').length === 0 && <span className="text-sm text-slate-400 italic">Žádná medikace nenalezena</span>}
+                          {entities.filter(e => e.category === 'MEDICATION').map((e, i) => (
+                              <div key={i} className="text-sm p-2 bg-blue-50 text-blue-800 rounded flex justify-between items-center">
+                                  <span>{e.text}</span>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm md:col-span-2">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">Subjektivní příznaky</h4>
+                      <div className="flex flex-wrap gap-2">
+                          {entities.filter(e => e.category === 'SYMPTOM').length === 0 && <span className="text-sm text-slate-400 italic">Žádné příznaky nenalezeny</span>}
+                          {entities.filter(e => e.category === 'SYMPTOM').map((e, i) => (
+                              <span key={i} className="text-sm px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-100 rounded-full">{e.text}</span>
+                          ))}
+                      </div>
+                  </div>
               </div>
            </div>
         )}
