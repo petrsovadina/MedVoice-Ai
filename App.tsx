@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
@@ -116,7 +115,7 @@ const App: React.FC = () => {
       if (!result.rawTranscript) return;
       setIsRegeneratingReport(true);
       try {
-          // Vždy používáme aktuální entities ze stavu (mohou být upraveny lékařem)
+          // Vždy používáme aktuální entities ze stavu (které mohl lékař editovat)
           const newReport = await generateStructuredDocument(result.rawTranscript, type, result.entities);
           
           // Inject provider info
@@ -148,7 +147,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <Header 
         onOpenSettings={() => setIsSettingsOpen(true)} 
         doctorName={providerConfig.name}
@@ -162,29 +161,29 @@ const App: React.FC = () => {
         onSave={saveConfig}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {appState !== AppState.REVIEW ? (
-          <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <div className="flex flex-col items-center justify-center min-h-[65vh]">
             <AudioRecorder onAudioReady={handleAudioReady} appState={appState} progress={progress} />
           </div>
         ) : null}
 
         {appState === AppState.REVIEW && result.report && (
-          <div className="h-[calc(100vh-140px)] flex flex-col">
-             <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200">
-                        Hotovo
+          <div className="h-[calc(100vh-160px)] flex flex-col animate-in fade-in duration-500">
+             <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-4">
+                    <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-2xl text-[11px] font-bold uppercase tracking-widest border border-emerald-200 shadow-sm">
+                        Klinická analýza dokončena
                     </span>
-                    <span className="text-slate-500 text-sm font-medium">{audioFile?.name}</span>
+                    <span className="text-slate-400 text-xs font-mono">{audioFile?.name}</span>
                 </div>
-                <button onClick={reset} className="flex items-center gap-2 text-slate-500 hover:text-primary-600 text-sm font-medium">
+                <button onClick={reset} className="flex items-center gap-2 text-slate-500 hover:text-primary-600 text-xs font-bold uppercase tracking-widest transition-all">
                     <RotateCcw size={16} /> Nový záznam
                 </button>
              </div>
 
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full min-h-0">
-                 <div className="h-full min-h-0">
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full min-h-0">
+                 <div className="h-full min-h-0 shadow-2xl rounded-3xl overflow-hidden">
                     <TranscriptEditor 
                         transcript={result.rawTranscript}
                         segments={result.segments}
