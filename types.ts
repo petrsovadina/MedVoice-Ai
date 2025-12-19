@@ -8,13 +8,21 @@ export enum AppState {
   ERROR = 'ERROR'
 }
 
-// 5 Klíčových typů dokumentů pro MVP
 export enum ReportType {
-  AMBULANTNI_ZAZNAM = 'AMBULANTNI_ZAZNAM',      // Dekurs (SOAP)
-  OSETR_ZAZNAM = 'OSETR_ZAZNAM',                // Sestra
-  KONZILIARNI_ZPRAVA = 'KONZILIARNI_ZPRAVA',    // Žádanka/Konzilium
-  POTVRZENI_VYSETRENI = 'POTVRZENI_VYSETRENI',  // Potvrzení pro pacienta/zaměstnavatele
-  DOPORUCENI_LECBY = 'DOPORUCENI_LECBY'         // Lázně, RHB, Domácí péče
+  AMBULANTNI_ZAZNAM = 'AMBULANTNI_ZAZNAM',
+  OSETR_ZAZNAM = 'OSETR_ZAZNAM',
+  KONZILIARNI_ZPRAVA = 'KONZILIARNI_ZPRAVA',
+  POTVRZENI_VYSETRENI = 'POTVRZENI_VYSETRENI',
+  DOPORUCENI_LECBY = 'DOPORUCENI_LECBY'
+}
+
+export interface ProviderConfig {
+  name: string;
+  address: string;
+  ico: string;
+  icp: string;
+  specializationCode: string;
+  contact: string;
 }
 
 export interface MedicalEntity {
@@ -23,11 +31,10 @@ export interface MedicalEntity {
   confidence?: number;
 }
 
-// --- VALIDACE ---
 export enum ValidationSeverity {
-  ERROR = 'ERROR',     // Blokuje (legislativní nutnost)
-  WARNING = 'WARNING', // Upozornění (doporučení)
-  INFO = 'INFO'        // Informace
+  ERROR = 'ERROR',
+  WARNING = 'WARNING',
+  INFO = 'INFO'
 }
 
 export interface ValidationError {
@@ -41,20 +48,21 @@ export interface ValidationResult {
   errors: ValidationError[];
 }
 
-// Společná hlavička pro všechny dokumenty dle Vyhlášky 444/2024 Sb.
 export interface IdentifikacePacienta {
   jmeno: string;
-  rodne_cislo_datum_nar: string; // RČ nebo datum narození
+  rodne_cislo_datum_nar: string;
   pojistovna?: string;
 }
 
 export interface IdentifikacePoskytovatele {
   lekar: string;
   odbornost: string;
-  datum_cas: string; // Datum a čas poskytnutí služby
+  datum_cas: string;
+  adresa?: string;
+  ico?: string;
+  icp?: string;
 }
 
-// --- 1. AMBULANTNÍ ZÁZNAM (SOAP) ---
 export interface AmbulantniZaznamData {
   identifikace: IdentifikacePacienta;
   poskytovatel: IdentifikacePoskytovatele;
@@ -67,20 +75,19 @@ export interface AmbulantniZaznamData {
   plan: {
     medikace: Array<{ nazev: string; davkovani: string }>;
     doporuceni: string;
-    pouceni: string; // Povinné dle vyhlášky (informace předaná pacientovi)
+    pouceni: string;
     kontrola: string;
   };
 }
 
-// --- 2. OŠETŘOVATELSKÝ ZÁZNAM ---
 export interface OsetrovatelskyZaznamData {
   identifikace: IdentifikacePacienta;
   poskytovatel: IdentifikacePoskytovatele;
   subjektivni_potize: string;
   vitalni_funkce: {
-    tk: string; // Tlak
-    p: string;  // Pulz
-    tt: string; // Teplota
+    tk: string;
+    p: string;
+    tt: string;
     spo2?: string;
   };
   provedene_vykony: Array<{ nazev: string; cas?: string }>;
@@ -88,37 +95,33 @@ export interface OsetrovatelskyZaznamData {
   poznamka_sestry: string;
 }
 
-// --- 3. KONZILIÁRNÍ ZPRÁVA ---
 export interface KonziliarniZpravaData {
   identifikace: IdentifikacePacienta;
   poskytovatel: IdentifikacePoskytovatele;
   cilova_odbornost: string;
-  duvod_konzilia: string; // Otázka
+  duvod_konzilia: string;
   nynnejsi_onemocneni: string;
   dosavadni_lecba: string;
   urgentnost: 'Běžná' | 'Akutní' | 'Neodkladná';
 }
 
-// --- 4. POTVRZENÍ O VYŠETŘENÍ ---
 export interface PotvrzeniVysetreniData {
   identifikace: IdentifikacePacienta;
   poskytovatel: IdentifikacePoskytovatele;
-  ucel_vysetreni: string; // např. "Akutní ošetření", "Preventivní prohlídka"
-  doprovod?: string; // např. "v doprovodu matky"
-  doporuceni_rezim: string; // např. "Klidový režim 3 dny"
+  ucel_vysetreni: string;
+  doprovod?: string;
+  doporuceni_rezim: string;
 }
 
-// --- 5. DOPORUČENÍ K LÉČBĚ (RHB/Lázně) ---
 export interface DoporuceniLecbyData {
   identifikace: IdentifikacePacienta;
   poskytovatel: IdentifikacePoskytovatele;
   diagnoza_hlavni: string;
-  navrhovana_terapie: string; // Textový popis
+  navrhovana_terapie: string;
   procedury: Array<{ nazev: string; frekvence: string }>;
   cil_lecby: string;
 }
 
-// Union typ pro data reportu
 export type MedicalDocumentData = 
   | AmbulantniZaznamData 
   | OsetrovatelskyZaznamData 
@@ -129,7 +132,7 @@ export type MedicalDocumentData =
 export interface StructuredReport {
   reportType: ReportType;
   data: MedicalDocumentData;
-  rawTextContent?: string; // Pro fallback zobrazení nebo editaci celku
+  rawTextContent?: string;
 }
 
 export interface TranscriptSegment {

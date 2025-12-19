@@ -1,13 +1,23 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
 import { TranscriptEditor } from './components/TranscriptEditor';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
-import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, ValidationResult } from './types';
+import { SettingsModal } from './components/SettingsModal';
+import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, ValidationResult, ProviderConfig, MedicalEntity } from './types';
 import { transcribeAudio, extractEntities, classifyDocument, generateStructuredDocument } from './services/geminiService';
 import { validateReport } from './services/validationService';
 import { RotateCcw } from 'lucide-react';
+
+const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
+  name: "MUDr. Jan Novák",
+  address: "Nemocniční 12, 110 00 Praha",
+  ico: "12345678",
+  icp: "88812345",
+  specializationCode: "001",
+  contact: "+420 123 456 789"
+};
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
@@ -22,6 +32,26 @@ const App: React.FC = () => {
   const [validationResult, setValidationResult] = useState<ValidationResult>({ isValid: true, errors: [] });
   const [progress, setProgress] = useState<string>("");
   const [isRegeneratingReport, setIsRegeneratingReport] = useState(false);
+  
+  // Settings State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [providerConfig, setProviderConfig] = useState<ProviderConfig>(DEFAULT_PROVIDER_CONFIG);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('medvoice_config');
+    if (saved) {
+      try {
+        setProviderConfig(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load config", e);
+      }
+    }
+  }, []);
+
+  const saveConfig = (newConfig: ProviderConfig) => {
+    setProviderConfig(newConfig);
+    localStorage.setItem('medvoice_config', JSON.stringify(newConfig));
+  };
 
   const handleAudioReady = async (file: AudioFile) => {
     setAudioFile(file);
@@ -31,26 +61,30 @@ const App: React.FC = () => {
     setAppState(AppState.PROCESSING_AUDIO);
     
     try {
-      // 1. Transcribe
-      setProgress("Nahrávám audio a zpracovávám přepis...");
+      setProgress("Zpracovávám přepis pomocí AI...");
       const { text, segments } = await transcribeAudio(file.blob, file.mimeType);
       
       setResult(prev => ({ ...prev, rawTranscript: text, segments }));
       setAppState(AppState.ANALYZING);
 
-      // 2. Extract Entities (Parallel) & Classify Document
-      setProgress("Analyzuji entity a klasifikuji typ dokumentu...");
-      
+      setProgress("Analyzuji klinické entity...");
       const [entities, detectedType] = await Promise.all([
         extractEntities(text),
         classifyDocument(text)
       ]);
 
-      // 3. Generate Specific Report
-      setProgress(`Generuji dokument typu: ${detectedType}...`);
+      setProgress(`Generuji ${detectedType}...`);
       const report = await generateStructuredDocument(text, detectedType, entities);
       
-      // 4. Validate Initial Report
+      // Inject provider config into report data
+      if (report.data.poskytovatel) {
+        report.data.poskytovatel.lekar = providerConfig.name;
+        report.data.poskytovatel.adresa = providerConfig.address;
+        report.data.poskytovatel.ico = providerConfig.ico;
+        report.data.poskytovatel.icp = providerConfig.icp;
+        report.data.poskytovatel.odbornost = providerConfig.specializationCode;
+      }
+
       const validation = validateReport(report);
       setValidationResult(validation);
 
@@ -70,22 +104,35 @@ const App: React.FC = () => {
 
   const handleReportUpdate = (newReport: StructuredReport) => {
     setResult(prev => ({ ...prev, report: newReport }));
-    // Real-time validation on change
     const validation = validateReport(newReport);
     setValidationResult(validation);
+  };
+
+  const handleEntitiesUpdate = (newEntities: MedicalEntity[]) => {
+      setResult(prev => ({ ...prev, entities: newEntities }));
   };
 
   const handleRegenerateReport = async (type: ReportType) => {
       if (!result.rawTranscript) return;
       setIsRegeneratingReport(true);
       try {
+          // Vždy používáme aktuální entities ze stavu (mohou být upraveny lékařem)
           const newReport = await generateStructuredDocument(result.rawTranscript, type, result.entities);
+          
+          // Inject provider info
+          if (newReport.data.poskytovatel) {
+            newReport.data.poskytovatel.lekar = providerConfig.name;
+            newReport.data.poskytovatel.odbornost = providerConfig.specializationCode;
+            newReport.data.poskytovatel.adresa = providerConfig.address;
+            newReport.data.poskytovatel.ico = providerConfig.ico;
+            newReport.data.poskytovatel.icp = providerConfig.icp;
+          }
+
           setResult(prev => ({ ...prev, report: newReport }));
           const validation = validateReport(newReport);
           setValidationResult(validation);
       } catch (error) {
           console.error("Failed to regenerate", error);
-          alert("Chyba při regeneraci.");
       } finally {
           setIsRegeneratingReport(false);
       }
@@ -102,7 +149,18 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Header />
+      <Header 
+        onOpenSettings={() => setIsSettingsOpen(true)} 
+        doctorName={providerConfig.name}
+        specialization={providerConfig.specializationCode}
+      />
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
+        config={providerConfig}
+        onSave={saveConfig}
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {appState !== AppState.REVIEW ? (
@@ -140,8 +198,10 @@ const App: React.FC = () => {
                         report={result.report}
                         validationResult={validationResult}
                         onReportChange={handleReportUpdate}
+                        onEntitiesChange={handleEntitiesUpdate}
                         onRegenerateReport={handleRegenerateReport}
                         isRegenerating={isRegeneratingReport}
+                        providerConfig={providerConfig}
                     />
                  </div>
              </div>
