@@ -45,7 +45,32 @@ export const summarizeTranscript = async (transcript: string, useThinking: boole
     const ai = getAIClient();
     const response = await ai.models.generateContent({
         model,
-        contents: `Přeformuluj přepis do klinického souhrnu (S, O, Dg, P). Dodržuj lékařskou terminologii. TEXT:\n${transcript}`,
+        contents: `
+          Vytvoř profesionální, EXTRÉMNĚ KOMPAKTNÍ klinický souhrn. Používej telegrafický styl.
+          Cílem je maximum informací na minimální ploše. Žádné úvodní věty, žádná vata.
+
+          STRUKTURA:
+          ### **[S] Subjektivně**
+          - Telegrafický výčet potíží a anamnézy (např. "2m insomnie, anhedonie, pracovní stres").
+          
+          ### **[O] Objektivně**
+          - Klinický nález, stav vědomí, orientace. 
+          - Vitální funkce pokud jsou zmíněny.
+
+          ### **[Dg] Diagnóza**
+          - Seznam diagnóz vč. MKN-10 kódů.
+
+          ### **[P] Plán**
+          - Medikace (název, síla, schéma).
+          - Doporučení a termín kontroly.
+
+          Pravidla:
+          - Používej lékařskou terminologii a zkratky.
+          - Vše v odrážkách pro rychlou orientaci.
+
+          PŘEPIS:
+          ${transcript}
+        `,
         config: { thinkingConfig: useThinking ? { thinkingBudget: 32768 } : { thinkingBudget: 0 } }
     });
     return response.text || "";
@@ -56,21 +81,10 @@ export const extractEntities = async (transcript: string): Promise<MedicalEntity
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `
-      Jsi expert na extrakci lékařských dat. Z textu extrahuj entity do JSON formátu.
-      Kategorie:
-      - DIAGNOSIS: Oficiální názvy nemocí (např. Hypertenze, Diabetes II. typu).
-      - MEDICATION: Názvy léků, síla a forma (např. Paralen 500mg tbl).
-      - SYMPTOM: Subjektivní potíže (např. bolest v krku, únava, dušnost).
-      - PII: Jména, rodná čísla, adresy, telefony.
-      - OTHER: Ostatní relevantní klinické údaje (např. alergie na pyl).
-
-      Pravidla:
-      1. Extrahuj pouze klinicky významná slova.
-      2. Ignoruj vatu a pomocná slova.
-      3. Pokud si nejsi jistý mezi DIAGNOSIS a SYMPTOM, zvol SYMPTOM pro aktuální potíže.
-      
-      JSON struktura: {"entities": [{"category": "...", "text": "..."}]}
-      
+      Z textu extrahuj entity do JSON formátu.
+      Kategorie: DIAGNOSIS, MEDICATION, SYMPTOM, PII, OTHER.
+      Extrahuj pouze klinicky významná slova.
+      JSON: {"entities": [{"category": "...", "text": "..."}]}
       TEXT:
       ${transcript}
     `,
@@ -83,13 +97,8 @@ export const detectIntents = async (summary: string): Promise<ReportType[]> => {
     const ai = getAIClient();
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Analyzuj klinický souhrn a urči, které dokumenty je nutné vygenerovat. 
-          Vždy zahrň AMBULATORY_RECORD.
-          Léky -> PRESCRIPTION_DRAFT.
-          Pracovní neschopnost -> SICK_LEAVE_DRAFT.
-          Žádost o lázně -> SPA_PLAN.
-          Konzilium/Specialista -> REFERRAL_REQUEST.
-          Hospitalizace/Propuštění -> EPICRISIS.
+        contents: `Urči dokumenty k vygenerování. Vždy zahrň AMBULATORY_RECORD.
+          Léky -> PRESCRIPTION_DRAFT. Neschopenka -> SICK_LEAVE_DRAFT.
           JSON {intents: []}. 
           TEXT:
           ${summary}`,
@@ -103,21 +112,19 @@ export const generateStructuredDocument = async (summary: string, type: ReportTy
     const ai = getAIClient();
     let schema = "";
     switch(type) {
-      case ReportType.AMBULATORY_RECORD: schema = `{"subjective_notes":"", "objective_notes":"", "vitals":{"bp":"", "pulse":""}, "diagnosis_text":"", "icd_10_code":"", "plan_text":""}`; break;
+      case ReportType.AMBULATORY_RECORD: schema = `{"subjective_notes":"", "objective_notes":"", "vitals":{"bp":"", "pulse":"", "temp":"", "spo2":"", "weight":""}, "diagnosis_text":"", "icd_10_code":"", "plan_text":""}`; break;
       case ReportType.PRESCRIPTION_DRAFT: schema = `{"items":[{"medication_name":"", "strength":"", "dosage_text":"", "dosage_structured":"", "quantity":1}]}`; break;
       case ReportType.REFERRAL_REQUEST: schema = `{"target_specialty":"", "urgency":"routine", "clinical_question":"", "anamnesis_summary":"", "diagnosis_code":""}`; break;
       case ReportType.SICK_LEAVE_DRAFT: schema = `{"diagnosis_code":"", "start_date":"2025-01-01", "regime_notes":""}`; break;
-      case ReportType.VISIT_CONFIRMATION: schema = `{"visit_date":"2025-01-01", "visit_purpose":""}`; break;
-      case ReportType.SPA_PLAN: schema = `{"indication_group":"", "planned_procedures":[], "diet_regime":""}`; break;
       default: schema = `{"notes":""}`;
     }
     const response = await ai.models.generateContent({
         model,
-        contents: `Vygeneruj strukturovaný dokument ${type} v JSON formátu. 
-          Použij dodané entity k validaci a doplnění dat.
+        contents: `Vygeneruj strukturovaný dokument ${type} v JSON. 
+          Dodržuj věcnost a kompaktnost.
           Entity: ${JSON.stringify(entities)}
           Schéma: ${schema}
-          Klinický souhrn: ${summary}`,
+          Souhrn: ${summary}`,
         config: { responseMimeType: "application/json" }
     });
     return { id: Math.random().toString(36).substr(2, 9), reportType: type, data: cleanAndParseJSON<any>(response.text, {}) };

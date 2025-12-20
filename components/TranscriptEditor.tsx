@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Headphones, Clock, Info, Shield, Pill, Activity, Stethoscope, Volume2 } from 'lucide-react';
+import { Play, Pause, Headphones, Clock, Info, Shield, Pill, Activity, Stethoscope, Volume2, Anchor, MousePointer2 } from 'lucide-react';
 import { TranscriptSegment, MedicalEntity } from '../types';
 
 interface TranscriptViewerProps {
@@ -25,70 +25,101 @@ export const TranscriptEditor: React.FC<TranscriptViewerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null);
+  const [followAudio, setFollowAudio] = useState(true);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentsContainerRef = useRef<HTMLDivElement>(null);
-  const lastScrolledIndex = useRef<number | null>(null);
+  const requestRef = useRef<number>();
+
+  // Synchronizace času a aktivního segmentu
+  const updateStatus = () => {
+    if (audioRef.current) {
+      const time = audioRef.current.currentTime;
+      setCurrentTime(time);
+
+      // Najdeme nejvhodnější segment (ten, který právě probíhá nebo poslední proběhlý)
+      let currentIndex = -1;
+      for (let i = 0; i < segments.length; i++) {
+        if (time >= segments[i].start && time <= segments[i].end) {
+          currentIndex = i;
+          break;
+        }
+        // Pokud jsme v mezeře mezi segmenty, označíme ten předchozí jako doznívající
+        if (i < segments.length - 1 && time > segments[i].end && time < segments[i+1].start) {
+            currentIndex = i;
+        }
+      }
+
+      if (currentIndex !== -1 && currentIndex !== activeSegmentIndex) {
+        setActiveSegmentIndex(currentIndex);
+        
+        if (followAudio) {
+          const element = segmentsContainerRef.current?.children[currentIndex] as HTMLElement;
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      }
+    }
+    requestRef.current = requestAnimationFrame(updateStatus);
+  };
+
+  useEffect(() => {
+    if (isPlaying) {
+      requestRef.current = requestAnimationFrame(updateStatus);
+    } else {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    }
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, [isPlaying, activeSegmentIndex, followAudio, segments]);
 
   useEffect(() => {
     if (audioRef.current) {
-        const audio = audioRef.current;
-        const updateTime = () => {
-            const time = audio.currentTime;
-            if (Number.isFinite(time)) {
-                setCurrentTime(time);
-                const index = segments.findIndex(s => time >= s.start && time <= s.end);
-                if (index !== -1 && index !== activeSegmentIndex) {
-                    setActiveSegmentIndex(index);
-                    if (index !== lastScrolledIndex.current) {
-                        const element = segmentsContainerRef.current?.children[index] as HTMLElement;
-                        if (element) {
-                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            lastScrolledIndex.current = index;
-                        }
-                    }
-                } else if (index === -1) {
-                    setActiveSegmentIndex(null);
-                }
-            }
-        };
+      const audio = audioRef.current;
+      const onLoadedMetadata = () => setDuration(audio.duration);
+      const onPlay = () => setIsPlaying(true);
+      const onPause = () => setIsPlaying(false);
+      const onEnded = () => {
+        setIsPlaying(false);
+        setActiveSegmentIndex(null);
+      };
 
-        const updateDuration = () => {
-            if (Number.isFinite(audio.duration)) setDuration(audio.duration);
-        };
+      audio.addEventListener('loadedmetadata', onLoadedMetadata);
+      audio.addEventListener('play', onPlay);
+      audio.addEventListener('pause', onPause);
+      audio.addEventListener('ended', onEnded);
 
-        audio.addEventListener('timeupdate', updateTime);
-        audio.addEventListener('loadedmetadata', updateDuration);
-        audio.addEventListener('play', () => setIsPlaying(true));
-        audio.addEventListener('pause', () => setIsPlaying(false));
-
-        return () => {
-            audio.removeEventListener('timeupdate', updateTime);
-            audio.removeEventListener('loadedmetadata', updateDuration);
-        };
+      return () => {
+        audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+        audio.removeEventListener('play', onPlay);
+        audio.removeEventListener('pause', onPause);
+        audio.removeEventListener('ended', onEnded);
+      };
     }
-  }, [audioUrl, segments, activeSegmentIndex]);
+  }, [audioUrl]);
 
   const togglePlay = () => {
-      if (audioRef.current) {
-          if (isPlaying) audioRef.current.pause();
-          else audioRef.current.play().catch(console.error);
-      }
+    if (audioRef.current) {
+      if (isPlaying) audioRef.current.pause();
+      else audioRef.current.play().catch(console.error);
+    }
   };
 
   const seekTo = (time: number, index: number) => {
-      if (audioRef.current && Number.isFinite(time)) {
-          audioRef.current.currentTime = time;
-          setActiveSegmentIndex(index);
-          lastScrolledIndex.current = index;
-          if (audioRef.current.paused) audioRef.current.play().catch(console.error);
-      }
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      setActiveSegmentIndex(index);
+      if (audioRef.current.paused) audioRef.current.play().catch(console.error);
+    }
   };
 
   const formatTime = (time: number) => {
-      if (!Number.isFinite(time)) return "0:00";
-      const mins = Math.floor(time / 60);
-      const secs = Math.floor(time % 60);
-      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (!Number.isFinite(time)) return "0:00";
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const highlightText = (text: string) => {
@@ -109,7 +140,7 @@ export const TranscriptEditor: React.FC<TranscriptViewerProps> = ({
           <span key={i} className="relative group inline-block mx-0.5">
             <span 
               onClick={(e) => { e.stopPropagation(); onEntityClick?.(part); }}
-              className={`px-1.5 py-0.5 rounded-md border-b-2 border-transparent font-bold transition-all cursor-pointer
+              className={`px-1 rounded-md border-b-2 border-transparent font-bold transition-all cursor-pointer
               ${match.category === 'SYMPTOM' ? 'bg-orange-100 text-orange-900 border-orange-300' : 
                 match.category === 'MEDICATION' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 
                 match.category === 'DIAGNOSIS' ? 'bg-blue-100 text-blue-900 border-blue-300' : 
@@ -118,10 +149,9 @@ export const TranscriptEditor: React.FC<TranscriptViewerProps> = ({
             >
               {part}
             </span>
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50 shadow-xl flex items-center gap-1.5 translate-y-1 group-hover:translate-y-0">
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50 shadow-xl flex items-center gap-1">
               <Icon size={10} className="text-white/70" />
               {meta.label}
-              <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></span>
             </span>
           </span>
         );
@@ -132,29 +162,36 @@ export const TranscriptEditor: React.FC<TranscriptViewerProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
-      <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+      <div className="p-5 border-b border-slate-100 bg-slate-50/50">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-2">
-              <Headphones size={14} className="text-primary-600" /> Přepis (Karaoke)
+          <h3 className="text-[9px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-2">
+              <Headphones size={12} className="text-primary-600" /> Karaoke Přepis
           </h3>
-          <div className="flex gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-400" title="Diagnózy"></div>
-            <div className="w-2 h-2 rounded-full bg-emerald-400" title="Medikace"></div>
-            <div className="w-2 h-2 rounded-full bg-orange-400" title="Symptomy"></div>
-          </div>
+          <button 
+            onClick={() => setFollowAudio(!followAudio)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${followAudio ? 'bg-primary-100 text-primary-700' : 'bg-slate-100 text-slate-400'}`}
+          >
+            {followAudio ? <Anchor size={10} /> : <MousePointer2 size={10} />}
+            {followAudio ? 'Sledovat audio' : 'Volný posun'}
+          </button>
         </div>
         
         {audioUrl && (
-            <div className="bg-white p-3 rounded-2xl flex items-center gap-4 border border-slate-200 shadow-sm transition-all hover:shadow-md">
-                <audio ref={audioRef} src={audioUrl} />
-                <button onClick={togglePlay} className={`w-10 h-10 flex items-center justify-center rounded-xl text-white transition-all shadow-lg active:scale-95 shrink-0 ${isPlaying ? 'bg-primary-600 animate-pulse' : 'bg-slate-900'}`}>
-                    {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-1" />}
+            <div className="bg-white p-3 rounded-2xl flex items-center gap-4 border border-slate-200 shadow-sm">
+                <audio ref={audioRef} src={audioUrl} preload="auto" />
+                <button onClick={togglePlay} className={`w-10 h-10 flex items-center justify-center rounded-xl text-white transition-all shadow-lg active:scale-95 shrink-0 ${isPlaying ? 'bg-primary-600' : 'bg-slate-900'}`}>
+                    {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
                 </button>
                 <div className="flex-1 flex flex-col gap-1.5 min-w-0">
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden relative">
-                        <div className="absolute top-0 left-0 h-full bg-primary-500 transition-all duration-300" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const pct = x / rect.width;
+                        if (audioRef.current) audioRef.current.currentTime = pct * duration;
+                    }}>
+                        <div className="absolute top-0 left-0 h-full bg-primary-500 transition-none" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
                     </div>
-                    <div className="flex justify-between text-[9px] font-black text-slate-400 font-mono">
+                    <div className="flex justify-between text-[8px] font-black text-slate-400 font-mono">
                         <span className={isPlaying ? "text-primary-600" : ""}>{formatTime(currentTime)}</span>
                         <span>{formatTime(duration)}</span>
                     </div>
@@ -163,11 +200,11 @@ export const TranscriptEditor: React.FC<TranscriptViewerProps> = ({
         )}
       </div>
       
-      <div ref={segmentsContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white scroll-smooth">
+      <div ref={segmentsContainerRef} className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-white scroll-smooth pb-20">
         {segments.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-300 italic py-20 text-center">
             <Clock size={32} className="mb-2 opacity-20" />
-            <p className="text-[10px] uppercase tracking-widest font-black">Čekám na data z mikrofonu...</p>
+            <p className="text-[9px] uppercase tracking-widest font-black">Čekám na přepis...</p>
           </div>
         ) : (
           segments.map((seg, idx) => {
@@ -175,14 +212,18 @@ export const TranscriptEditor: React.FC<TranscriptViewerProps> = ({
               const isDoctor = seg.speaker === 'Lékař';
               return (
                   <div key={idx} onClick={() => seekTo(seg.start, idx)} className={`flex flex-col cursor-pointer transition-all duration-300 ${isDoctor ? 'items-start' : 'items-end'}`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        {isActive && isPlaying && <Volume2 size={10} className="text-primary-500 animate-bounce" />}
+                      <div className="flex items-center gap-1.5 mb-1 px-1">
                         <span className={`text-[8px] font-black uppercase tracking-widest ${isActive ? 'text-primary-600' : (isDoctor ? 'text-slate-400' : 'text-emerald-500')}`}>
                             {seg.speaker}
                         </span>
                         <span className="text-[7px] font-bold text-slate-300 font-mono">[{formatTime(seg.start)}]</span>
+                        {isActive && isPlaying && <div className="flex gap-0.5 h-2 items-end">
+                            <div className="w-0.5 bg-primary-400 animate-[bounce_0.6s_infinite_0ms]"></div>
+                            <div className="w-0.5 bg-primary-400 animate-[bounce_0.6s_infinite_100ms]"></div>
+                            <div className="w-0.5 bg-primary-400 animate-[bounce_0.6s_infinite_200ms]"></div>
+                        </div>}
                       </div>
-                      <div className={`p-4 rounded-2xl max-w-[90%] text-sm leading-relaxed transition-all duration-300 border ${isActive ? 'border-primary-400 bg-primary-50 text-slate-900 shadow-lg ring-4 ring-primary-50 scale-[1.02] z-10' : 'border-slate-100 bg-slate-50/50 text-slate-600'} ${isDoctor ? 'rounded-tl-none' : 'rounded-tr-none'}`}>
+                      <div className={`p-3.5 rounded-2xl max-w-[92%] text-xs leading-relaxed transition-all duration-300 border ${isActive ? 'border-primary-300 bg-primary-50/50 text-slate-900 shadow-md ring-2 ring-primary-50 scale-[1.01] z-10' : 'border-slate-50 bg-slate-50/30 text-slate-500'} ${isDoctor ? 'rounded-tl-none' : 'rounded-tr-none'}`}>
                          {highlightText(seg.text)}
                       </div>
                   </div>

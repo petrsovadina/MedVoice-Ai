@@ -37,6 +37,11 @@ export const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({
       Placeholder.configure({ placeholder: 'Zde se objeví AI návrh klinického souhrnu...', }),
     ],
     content: initialSummary,
+    editorProps: {
+      attributes: {
+        class: 'prose prose-slate max-w-none focus:outline-none min-h-[400px] text-slate-700 leading-relaxed',
+      },
+    },
   });
 
   const handleUpdateEntity = (index: number, value: string) => {
@@ -139,6 +144,23 @@ export const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({
 
   return (
     <div className="h-full flex flex-col gap-4 animate-in fade-in duration-500">
+        <style>{`
+          .prose h3 {
+            border-left: 4px solid #0ea5e9;
+            padding-left: 12px;
+            margin-top: 2rem;
+            color: #1e293b;
+            font-size: 0.875rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+          }
+          .prose h3:contains('O (Objektivně)') { border-left-color: #10b981; }
+          .prose h3:contains('Dg') { border-left-color: #3b82f6; }
+          .prose h3:contains('P (Plán)') { border-left-color: #f59e0b; }
+          .prose p { margin-bottom: 1rem; }
+          .prose strong { color: #0f172a; font-weight: 700; }
+        `}</style>
+        
         <div className="flex justify-between items-center px-1">
             <div className="flex items-center gap-4">
                 <div className="bg-primary-600 p-2.5 rounded-2xl text-white shadow-xl shadow-primary-500/20"><Sparkles size={24} /></div>
@@ -170,17 +192,20 @@ export const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({
 
         <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
             <div className="col-span-3 h-full min-h-0"><TranscriptEditor segments={segments} entities={entities} audioUrl={audioUrl} onEntityClick={onTranscriptEntityClick} transcript={transcript} /></div>
-            <div className="col-span-6 flex flex-col bg-white rounded-[40px] border border-slate-200 shadow-2xl overflow-hidden">
-                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100">
-                      <button onClick={() => editor?.chain().focus().toggleBold().run()} className={`p-2 rounded-lg ${editor?.isActive('bold') ? 'bg-white shadow-sm text-primary-600' : 'text-slate-400'}`}><Bold size={16} /></button>
-                      <button onClick={() => editor?.chain().focus().toggleItalic().run()} className={`p-2 rounded-lg ${editor?.isActive('italic') ? 'bg-white shadow-sm text-primary-600' : 'text-slate-400'}`}><Italic size={16} /></button>
-                      <button onClick={() => editor?.chain().focus().toggleBulletList().run()} className={`p-2 rounded-lg ${editor?.isActive('bulletList') ? 'bg-white shadow-sm text-primary-600' : 'text-slate-400'}`}><List size={16} /></button>
+            <div className="col-span-6 flex flex-col bg-white rounded-[40px] border border-slate-200 shadow-2xl overflow-hidden relative">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
+                      <button onClick={() => editor?.chain().focus().toggleBold().run()} className={`p-2 rounded-lg ${editor?.isActive('bold') ? 'bg-primary-50 text-primary-600' : 'text-slate-400 hover:bg-slate-50'}`}><Bold size={16} /></button>
+                      <button onClick={() => editor?.chain().focus().toggleItalic().run()} className={`p-2 rounded-lg ${editor?.isActive('italic') ? 'bg-primary-50 text-primary-600' : 'text-slate-400 hover:bg-slate-50'}`}><Italic size={16} /></button>
+                      <button onClick={() => editor?.chain().focus().toggleBulletList().run()} className={`p-2 rounded-lg ${editor?.isActive('bulletList') ? 'bg-primary-50 text-primary-600' : 'text-slate-400'}`}><List size={16} /></button>
                     </div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Editor Souhrnu</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Klinický Souhrn (AI Draft)</span>
                 </div>
-                <div className="flex-1 p-10 overflow-y-auto prose prose-slate max-w-none custom-scrollbar">
-                    <EditorContent editor={editor} className="outline-none min-h-full text-slate-700" />
+                <div className="flex-1 p-10 overflow-y-auto custom-scrollbar bg-white">
+                    <EditorContent editor={editor} />
+                </div>
+                <div className="p-3 bg-slate-50 border-t border-slate-100 text-[9px] text-slate-400 italic flex items-center gap-2 justify-center">
+                   <BrainCircuit size={12} /> Tento text je generován AI na základě nahrávky. Prosím o důkladnou kontrolu.
                 </div>
             </div>
             <div className="col-span-3 flex flex-col gap-6 overflow-y-auto pr-3 custom-scrollbar pb-10">
