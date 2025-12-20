@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { AudioRecorder } from './components/AudioRecorder';
 import { TranscriptEditor } from './components/TranscriptEditor';
+import { WorkspaceEditor } from './components/WorkspaceEditor';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
 import { SettingsModal } from './components/SettingsModal';
 import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, ValidationResult, ProviderConfig, MedicalEntity } from './types';
-import { transcribeAudio, extractEntities, classifyDocument, generateStructuredDocument } from './services/geminiService';
+import { transcribeAudio, summarizeTranscript, extractEntities, detectIntents, generateStructuredDocument } from './services/geminiService';
 import { validateReport } from './services/validationService';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, AlertTriangle, Key } from 'lucide-react';
 
 const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
   name: "MUDr. Jan Novák",
@@ -15,194 +17,227 @@ const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
   ico: "12345678",
   icp: "88812345",
   specializationCode: "001",
-  contact: "+420 123 456 789"
+  contact: "+420 123 456 789",
+  useThinkingMode: false
 };
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
-  const [audioFile, setAudioFile] = useState<AudioFile | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [lastAudioFile, setLastAudioFile] = useState<AudioFile | null>(null);
   const [result, setResult] = useState<ProcessingResult>({
     rawTranscript: '',
+    summary: '',
     segments: [],
     entities: [],
-    report: null
+    reports: []
   });
-  const [validationResult, setValidationResult] = useState<ValidationResult>({ isValid: true, errors: [] });
+  const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
   const [progress, setProgress] = useState<string>("");
-  const [isRegeneratingReport, setIsRegeneratingReport] = useState(false);
-  
-  // Settings State
+  const [isProcessingFinal, setIsProcessingFinal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig>(DEFAULT_PROVIDER_CONFIG);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('medvoice_config');
-    if (saved) {
-      try {
-        setProviderConfig(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load config", e);
-      }
-    }
-  }, []);
-
-  const saveConfig = (newConfig: ProviderConfig) => {
-    setProviderConfig(newConfig);
-    localStorage.setItem('medvoice_config', JSON.stringify(newConfig));
-  };
+  const [errorDetails, setErrorDetails] = useState<{message: string, isQuota: boolean} | null>(null);
 
   const handleAudioReady = async (file: AudioFile) => {
-    setAudioFile(file);
+    setLastAudioFile(file);
     const url = URL.createObjectURL(file.blob);
     setAudioUrl(url);
-
     setAppState(AppState.PROCESSING_AUDIO);
+    setErrorDetails(null);
     
     try {
-      setProgress("Zpracovávám přepis pomocí AI...");
+      setProgress("Přepisuji nahrávku pomocí AI...");
       const { text, segments } = await transcribeAudio(file.blob, file.mimeType);
       
-      setResult(prev => ({ ...prev, rawTranscript: text, segments }));
       setAppState(AppState.ANALYZING);
-
-      setProgress("Analyzuji klinické entity...");
-      const [entities, detectedType] = await Promise.all([
-        extractEntities(text),
-        classifyDocument(text)
-      ]);
-
-      setProgress(`Generuji ${detectedType}...`);
-      const report = await generateStructuredDocument(text, detectedType, entities);
+      setProgress(providerConfig.useThinkingMode ? "Hloubková AI analýza (může trvat až 1 minutu)..." : "Extrahuje klinická data a vytvářím souhrn...");
       
-      // Inject provider config into report data
-      if (report.data.poskytovatel) {
-        report.data.poskytovatel.lekar = providerConfig.name;
-        report.data.poskytovatel.adresa = providerConfig.address;
-        report.data.poskytovatel.ico = providerConfig.ico;
-        report.data.poskytovatel.icp = providerConfig.icp;
-        report.data.poskytovatel.odbornost = providerConfig.specializationCode;
-      }
-
-      const validation = validateReport(report);
-      setValidationResult(validation);
+      const [summary, entities] = await Promise.all([
+        summarizeTranscript(text, providerConfig.useThinkingMode),
+        extractEntities(text)
+      ]);
 
       setResult(prev => ({
         ...prev,
-        entities,
-        report
+        rawTranscript: text,
+        segments,
+        summary,
+        entities
       }));
+      
+      setAppState(AppState.INTERMEDIATE_REVIEW);
 
-      setAppState(AppState.REVIEW);
-
-    } catch (error) {
+    } catch (error: any) {
       console.error("Workflow failed", error);
+      const isQuota = error.status === 429 || error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED');
+      setErrorDetails({
+        message: isQuota ? "Byla překročena kvóta API. Zkuste to za chvíli nebo použijte vlastní klíč." : (error.message || "Nastala neočekávaná chyba."),
+        isQuota
+      });
       setAppState(AppState.ERROR);
     }
   };
 
-  const handleReportUpdate = (newReport: StructuredReport) => {
-    setResult(prev => ({ ...prev, report: newReport }));
-    const validation = validateReport(newReport);
-    setValidationResult(validation);
-  };
-
-  const handleEntitiesUpdate = (newEntities: MedicalEntity[]) => {
-      setResult(prev => ({ ...prev, entities: newEntities }));
-  };
-
-  const handleRegenerateReport = async (type: ReportType) => {
-      if (!result.rawTranscript) return;
-      setIsRegeneratingReport(true);
+  const handleFinalizeDocuments = async (updatedSummary: string, updatedEntities: MedicalEntity[]) => {
+      setIsProcessingFinal(true);
+      setErrorDetails(null);
+      setProgress(providerConfig.useThinkingMode ? "Generování s hloubkovou úvahou (Gemini Pro Thinking)..." : "Generuji strukturované dokumenty dle specifikace...");
       try {
-          // Vždy používáme aktuální entities ze stavu (které mohl lékař editovat)
-          const newReport = await generateStructuredDocument(result.rawTranscript, type, result.entities);
-          
-          // Inject provider info
-          if (newReport.data.poskytovatel) {
-            newReport.data.poskytovatel.lekar = providerConfig.name;
-            newReport.data.poskytovatel.odbornost = providerConfig.specializationCode;
-            newReport.data.poskytovatel.adresa = providerConfig.address;
-            newReport.data.poskytovatel.ico = providerConfig.ico;
-            newReport.data.poskytovatel.icp = providerConfig.icp;
-          }
+          const intents = await detectIntents(updatedSummary);
+          const reports = await Promise.all(
+            intents.map(type => generateStructuredDocument(updatedSummary, type, updatedEntities, providerConfig.useThinkingMode))
+          );
 
-          setResult(prev => ({ ...prev, report: newReport }));
-          const validation = validateReport(newReport);
-          setValidationResult(validation);
-      } catch (error) {
-          console.error("Failed to regenerate", error);
+          const validations: Record<string, ValidationResult> = {};
+          reports.forEach(r => validations[r.id] = validateReport(r));
+
+          setResult(prev => ({ 
+            ...prev, 
+            summary: updatedSummary, 
+            entities: updatedEntities, 
+            reports 
+          }));
+          
+          setValidationResults(validations);
+          setAppState(AppState.REVIEW);
+      } catch (error: any) {
+          console.error(error);
+          const isQuota = error.status === 429 || error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED');
+          setErrorDetails({
+            message: isQuota ? "Byla překročena kvóta API při generování dokumentů." : (error.message || "Chyba při finalizaci."),
+            isQuota
+          });
+          setAppState(AppState.ERROR);
       } finally {
-          setIsRegeneratingReport(false);
+          setIsProcessingFinal(false);
       }
   };
 
+  const handleOpenKeySelection = async () => {
+    try {
+      // @ts-ignore
+      if (window.aistudio?.openSelectKey) {
+        // @ts-ignore
+        await window.aistudio.openSelectKey();
+        // Po úspěšném výběru klíče zkusíme akci znovu pokud máme data
+        if (lastAudioFile && appState === AppState.ERROR) {
+           handleAudioReady(lastAudioFile);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to open key selector", e);
+    }
+  };
+
   const reset = () => {
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    setAudioUrl(null);
     setAppState(AppState.IDLE);
-    setAudioFile(null);
-    setResult({ rawTranscript: '', segments: [], entities: [], report: null });
-    setValidationResult({ isValid: true, errors: [] });
+    setResult({ rawTranscript: '', summary: '', segments: [], entities: [], reports: [] });
+    setAudioUrl(null);
+    setLastAudioFile(null);
+    setErrorDetails(null);
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header 
-        onOpenSettings={() => setIsSettingsOpen(true)} 
-        doctorName={providerConfig.name}
-        specialization={providerConfig.specializationCode}
-      />
+    <div className="min-h-screen flex flex-col font-inter bg-slate-50">
+      <Header onOpenSettings={() => setIsSettingsOpen(true)} doctorName={providerConfig.name} specialization={providerConfig.specializationCode} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={providerConfig} onSave={setProviderConfig} />
 
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)}
-        config={providerConfig}
-        onSave={saveConfig}
-      />
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {appState !== AppState.REVIEW ? (
-          <div className="flex flex-col items-center justify-center min-h-[65vh]">
+      <main className="flex-1 w-full mx-auto px-6 py-4 overflow-hidden">
+        {(appState === AppState.IDLE || appState === AppState.RECORDING || appState === AppState.PROCESSING_AUDIO || appState === AppState.ANALYZING) && (
+          <div className="flex flex-col items-center justify-center min-h-[70vh]">
             <AudioRecorder onAudioReady={handleAudioReady} appState={appState} progress={progress} />
           </div>
-        ) : null}
+        )}
 
-        {appState === AppState.REVIEW && result.report && (
-          <div className="h-[calc(100vh-160px)] flex flex-col animate-in fade-in duration-500">
-             <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-4">
-                    <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-2xl text-[11px] font-bold uppercase tracking-widest border border-emerald-200 shadow-sm">
-                        Klinická analýza dokončena
-                    </span>
-                    <span className="text-slate-400 text-xs font-mono">{audioFile?.name}</span>
+        {appState === AppState.ERROR && (
+          <div className="flex flex-col items-center justify-center min-h-[70vh] animate-in fade-in zoom-in-95 duration-300">
+            <div className="bg-white p-10 rounded-[40px] border border-red-100 shadow-2xl shadow-red-500/10 text-center max-w-md">
+                <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <AlertTriangle size={40} className="text-red-500" />
                 </div>
-                <button onClick={reset} className="flex items-center gap-2 text-slate-500 hover:text-primary-600 text-xs font-bold uppercase tracking-widest transition-all">
-                    <RotateCcw size={16} /> Nový záznam
+                <h2 className="text-2xl font-black text-slate-800 mb-4 uppercase tracking-tight">Ups, něco se nepovedlo</h2>
+                <p className="text-slate-500 mb-8 font-medium">{errorDetails?.message}</p>
+                
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={() => lastAudioFile && handleAudioReady(lastAudioFile)}
+                        className="w-full py-4 bg-primary-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-primary-700 shadow-lg shadow-primary-500/30 transition-all active:scale-95"
+                    >
+                        Zkusit znovu
+                    </button>
+                    
+                    {errorDetails?.isQuota && (
+                        <button 
+                            onClick={handleOpenKeySelection}
+                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3"
+                        >
+                            <Key size={18} /> Použít vlastní API klíč
+                        </button>
+                    )}
+
+                    <button 
+                        onClick={reset}
+                        className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest hover:text-slate-600 transition-all"
+                    >
+                        Zrušit a začít znovu
+                    </button>
+                </div>
+                
+                {errorDetails?.isQuota && (
+                   <p className="mt-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
+                      Pro bezlimitní provoz doporučujeme použít vlastní API klíč z placeného projektu Google Cloud. 
+                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-primary-500 block underline mt-1">Dokumentace k platbám</a>
+                   </p>
+                )}
+            </div>
+          </div>
+        )}
+
+        {appState === AppState.INTERMEDIATE_REVIEW && (
+           <WorkspaceEditor 
+              transcript={result.rawTranscript}
+              segments={result.segments}
+              summary={result.summary}
+              entities={result.entities}
+              onFinalize={handleFinalizeDocuments}
+              isProcessing={isProcessingFinal}
+              audioUrl={audioUrl}
+           />
+        )}
+
+        {appState === AppState.REVIEW && (
+          <div className="h-full flex flex-col gap-3 animate-in fade-in duration-500">
+             <div className="flex justify-between items-center px-1">
+                <div className="flex items-center gap-3">
+                   <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Finalizace Dokumentace</h2>
+                   <div className="flex gap-2">
+                      {result.reports.map(r => (
+                        <span key={r.id} className="text-[8px] font-black bg-slate-200 px-2 py-0.5 rounded uppercase">{r.reportType}</span>
+                      ))}
+                   </div>
+                </div>
+                <button onClick={reset} className="flex items-center gap-1.5 text-primary-600 font-bold text-[9px] uppercase tracking-widest hover:text-primary-700 transition-colors">
+                    <RotateCcw size={12} strokeWidth={3} /> Nový Pacient / Session
                 </button>
              </div>
-
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full min-h-0">
-                 <div className="h-full min-h-0 shadow-2xl rounded-3xl overflow-hidden">
-                    <TranscriptEditor 
-                        transcript={result.rawTranscript}
-                        segments={result.segments}
-                        audioUrl={audioUrl}
-                    />
-                 </div>
-
-                 <div className="h-full min-h-0">
+             
+             <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
+                <div className="col-span-3 h-full min-h-0">
+                    <TranscriptEditor transcript={result.rawTranscript} segments={result.segments} entities={result.entities} audioUrl={audioUrl} />
+                </div>
+                <div className="col-span-9 h-full min-h-0">
                     <AnalysisDisplay 
                         entities={result.entities} 
-                        report={result.report}
-                        validationResult={validationResult}
-                        onReportChange={handleReportUpdate}
-                        onEntitiesChange={handleEntitiesUpdate}
-                        onRegenerateReport={handleRegenerateReport}
-                        isRegenerating={isRegeneratingReport}
+                        reports={result.reports}
+                        validationResults={validationResults}
+                        onReportChange={(id, nr) => setResult(p => ({...p, reports: p.reports.map(r => r.id === id ? nr : r)}))}
+                        onEntitiesChange={(ents) => setResult(p => ({...p, entities: ents}))}
+                        onRegenerateReports={async () => handleFinalizeDocuments(result.summary, result.entities)}
+                        isRegenerating={isProcessingFinal}
                         providerConfig={providerConfig}
                     />
-                 </div>
+                </div>
              </div>
           </div>
         )}

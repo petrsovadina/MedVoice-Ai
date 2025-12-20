@@ -4,16 +4,22 @@ export enum AppState {
   RECORDING = 'RECORDING',
   PROCESSING_AUDIO = 'PROCESSING_AUDIO',
   ANALYZING = 'ANALYZING',
+  INTERMEDIATE_REVIEW = 'INTERMEDIATE_REVIEW',
   REVIEW = 'REVIEW',
   ERROR = 'ERROR'
 }
 
 export enum ReportType {
-  AMBULANTNI_ZAZNAM = 'AMBULANTNI_ZAZNAM',
-  OSETR_ZAZNAM = 'OSETR_ZAZNAM',
-  KONZILIARNI_ZPRAVA = 'KONZILIARNI_ZPRAVA',
-  POTVRZENI_VYSETRENI = 'POTVRZENI_VYSETRENI',
-  DOPORUCENI_LECBY = 'DOPORUCENI_LECBY'
+  AMBULATORY_RECORD = 'AMBULATORY_RECORD', // 1.1, 1.2
+  NURSE_RECORD = 'NURSE_RECORD', // 2.0
+  PRESCRIPTION_DRAFT = 'PRESCRIPTION_DRAFT', // 13.0, 5.3
+  REFERRAL_REQUEST = 'REFERRAL_REQUEST', // 6.0, 5.1
+  SICK_LEAVE_DRAFT = 'SICK_LEAVE_DRAFT', // 14.0
+  VISIT_CONFIRMATION = 'VISIT_CONFIRMATION', // 7.0
+  CONSENT_RECORD = 'CONSENT_RECORD', // 9.0
+  SPA_PLAN = 'SPA_PLAN', // 3.1
+  EPICRISIS = 'EPICRISIS', // 4.0
+  TELEMEDICINE_NOTE = 'TELEMEDICINE_NOTE' // 12.0
 }
 
 export interface ProviderConfig {
@@ -23,116 +29,114 @@ export interface ProviderConfig {
   icp: string;
   specializationCode: string;
   contact: string;
+  useThinkingMode?: boolean;
 }
 
 export interface MedicalEntity {
   category: 'SYMPTOM' | 'MEDICATION' | 'DIAGNOSIS' | 'PII' | 'OTHER';
   text: string;
-  confidence?: number;
+  isManual?: boolean;
 }
 
-export enum ValidationSeverity {
-  ERROR = 'ERROR',
-  WARNING = 'WARNING',
-  INFO = 'INFO'
+export interface AmbulatoryRecord {
+  doc_type: 'AMBULATORY_RECORD';
+  subjective_notes: string;
+  objective_notes: string;
+  vitals: { bp?: string; pulse?: string; temp?: string; spo2?: string; weight?: string; };
+  diagnosis_text: string;
+  icd_10_code: string;
+  plan_text: string;
 }
 
-export interface ValidationError {
-  field: string;
-  message: string;
-  severity: ValidationSeverity;
+export interface PrescriptionDraft {
+  doc_type: 'PRESCRIPTION_DRAFT';
+  items: Array<{
+    medication_name: string;
+    strength: string;
+    dosage_text: string;
+    dosage_structured: string;
+    quantity: number;
+  }>;
 }
 
-export interface ValidationResult {
-  isValid: boolean;
-  errors: ValidationError[];
+export interface ReferralRequest {
+  doc_type: 'REFERRAL_REQUEST';
+  target_specialty: string;
+  urgency: 'routine' | 'urgent' | 'cito';
+  clinical_question: string;
+  anamnesis_summary: string;
+  diagnosis_code: string;
 }
 
-export interface IdentifikacePacienta {
-  jmeno: string;
-  rodne_cislo_datum_nar: string;
-  pojistovna?: string;
+export interface Epicrisis {
+  doc_type: 'EPICRISIS';
+  admission_reason: string;
+  hospitalization_summary: string;
+  discharge_condition: string;
+  discharge_medication: string;
+  follow_up_recommendations: string;
 }
 
-export interface IdentifikacePoskytovatele {
-  lekar: string;
-  odbornost: string;
-  datum_cas: string;
-  adresa?: string;
-  ico?: string;
-  icp?: string;
+export interface TelemedicineNote {
+  doc_type: 'TELEMEDICINE_NOTE';
+  caller_identity: string;
+  communication_channel: string;
+  reason_for_contact: string;
+  provided_advice: string;
 }
 
-export interface AmbulantniZaznamData {
-  identifikace: IdentifikacePacienta;
-  poskytovatel: IdentifikacePoskytovatele;
-  subjektivni: string;
-  objektivni: string;
-  hodnoceni: {
-    diagnozy: Array<{ kod: string; nazev: string }>;
-    zaver: string;
-  };
-  plan: {
-    medikace: Array<{ nazev: string; davkovani: string }>;
-    doporuceni: string;
-    pouceni: string;
-    kontrola: string;
-  };
+export interface ConsentRecord {
+  doc_type: 'CONSENT_RECORD';
+  procedure_name: string;
+  risks_discussed: string[];
+  alternatives_discussed: string[];
+  consent_given: boolean;
 }
 
-export interface OsetrovatelskyZaznamData {
-  identifikace: IdentifikacePacienta;
-  poskytovatel: IdentifikacePoskytovatele;
-  subjektivni_potize: string;
-  vitalni_funkce: {
-    tk: string;
-    p: string;
-    tt: string;
-    spo2?: string;
-  };
-  provedene_vykony: Array<{ nazev: string; cas?: string }>;
-  ordinace_lekare: string;
-  poznamka_sestry: string;
+export interface NurseRecord {
+  doc_type: 'NURSE_RECORD';
+  patient_state: string;
+  vitals: { bp?: string; pulse?: string; temp?: string; weight?: string };
+  interventions: string[];
+  notes: string;
 }
 
-export interface KonziliarniZpravaData {
-  identifikace: IdentifikacePacienta;
-  poskytovatel: IdentifikacePoskytovatele;
-  cilova_odbornost: string;
-  duvod_konzilia: string;
-  nynnejsi_onemocneni: string;
-  dosavadni_lecba: string;
-  urgentnost: 'Běžná' | 'Akutní' | 'Neodkladná';
+export interface SickLeaveDraft {
+  doc_type: 'SICK_LEAVE_DRAFT';
+  diagnosis_code: string;
+  start_date: string;
+  regime_notes: string;
 }
 
-export interface PotvrzeniVysetreniData {
-  identifikace: IdentifikacePacienta;
-  poskytovatel: IdentifikacePoskytovatele;
-  ucel_vysetreni: string;
-  doprovod?: string;
-  doporuceni_rezim: string;
+export interface VisitConfirmation {
+  doc_type: 'VISIT_CONFIRMATION';
+  visit_date: string;
+  visit_purpose: string;
 }
 
-export interface DoporuceniLecbyData {
-  identifikace: IdentifikacePacienta;
-  poskytovatel: IdentifikacePoskytovatele;
-  diagnoza_hlavni: string;
-  navrhovana_terapie: string;
-  procedury: Array<{ nazev: string; frekvence: string }>;
-  cil_lecby: string;
+export interface SpaPlan {
+  doc_type: 'SPA_PLAN';
+  indication_group: string;
+  planned_procedures: string[];
+  diet_regime: string;
 }
 
 export type MedicalDocumentData = 
-  | AmbulantniZaznamData 
-  | OsetrovatelskyZaznamData 
-  | KonziliarniZpravaData 
-  | PotvrzeniVysetreniData 
-  | DoporuceniLecbyData;
+  | AmbulatoryRecord 
+  | PrescriptionDraft 
+  | ReferralRequest 
+  | NurseRecord
+  | SickLeaveDraft
+  | VisitConfirmation
+  | ConsentRecord
+  | Epicrisis
+  | TelemedicineNote
+  | SpaPlan;
 
 export interface StructuredReport {
+  id: string;
   reportType: ReportType;
   data: MedicalDocumentData;
-  rawTextContent?: string;
 }
 
 export interface TranscriptSegment {
@@ -144,9 +148,10 @@ export interface TranscriptSegment {
 
 export interface ProcessingResult {
   rawTranscript: string;
+  summary: string;
   segments: TranscriptSegment[];
   entities: MedicalEntity[];
-  report: StructuredReport | null;
+  reports: StructuredReport[];
 }
 
 export interface AudioFile {
@@ -154,3 +159,7 @@ export interface AudioFile {
   mimeType: string;
   name: string;
 }
+
+export enum ValidationSeverity { ERROR = 'ERROR', WARNING = 'WARNING', INFO = 'INFO' }
+export interface ValidationError { field: string; message: string; severity: ValidationSeverity; }
+export interface ValidationResult { isValid: boolean; errors: ValidationError[]; }

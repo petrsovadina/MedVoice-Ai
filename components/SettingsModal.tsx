@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Save, Building2, MapPin, Hash, Phone, Info } from 'lucide-react';
+import { X, Save, Building2, MapPin, Hash, Phone, Info, BrainCircuit } from 'lucide-react';
 import { ProviderConfig } from '../types';
 
 interface SettingsModalProps {
@@ -22,8 +22,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: type === 'checkbox' ? checked : value 
+    }));
   };
 
   return (
@@ -129,6 +132,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100">
+               <div className="flex items-center justify-between p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                  <div className="flex items-center gap-3 text-purple-800">
+                     <BrainCircuit size={24} className="text-purple-600 shrink-0" />
+                     <div>
+                        <p className="text-sm font-bold">Hloubková AI analýza</p>
+                        <p className="text-[10px] text-purple-600 font-medium">Používá Gemini 3 Pro pro komplexní případy (pomalé)</p>
+                     </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="useThinkingMode"
+                      checked={formData.useThinkingMode} 
+                      onChange={handleChange} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+               </div>
             </div>
           </div>
         </form>
