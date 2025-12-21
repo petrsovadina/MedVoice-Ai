@@ -6,84 +6,103 @@ MedVoice AI je webová aplikace nové generace, která využívá generativní u
 
 ---
 
-## ⚖️ Legislativní Rámec a Standardy
-
-Aplikace je navržena tak, aby generované výstupy splňovaly požadavky na vedení zdravotnické dokumentace dle platných norem:
-
-*   **Vyhláška č. 444/2024 Sb.** o zdravotnické dokumentaci (struktura záznamů).
-*   **Zákon č. 372/2011 Sb.** o zdravotních službách (informovaný souhlas, negativní revers, poučení).
-*   **Standardy NCEZ** (Národní centrum elektronického zdravotnictví).
-
----
-
-## 📋 Podporované Typy Dokumentace
-
-Systém automaticky rozpozná kontext rozhovoru a vytvoří příslušný typ dokumentu:
-
-### 1. Záznam o poskytnuté zdravotní službě (Ambulantní záznam)
-*   **Dle:** §3–§6 Vyhlášky 444/2024 Sb.
-*   **Funkce:** Automatická strukturace do formátu SOAP (Subjektivní, Objektivní, Hodnocení, Plán).
-*   **Obsah:** Identifikace, důvod návštěvy, fyzikální nález, diagnostický závěr, terapeutický plán.
-
-### 2. Výpis ze zdravotnické dokumentace
-*   **Dle:** Standardů pro předávání péče (zaměstnavatel, pojišťovna, PL).
-*   **Funkce:** Agregace historie, chronických onemocnění a medikace do přehledného souhrnu.
-
-### 3. Konziliární zpráva / Žádanka
-*   **Dle:** Metodiky pro sdílení péče mezi specialisty.
-*   **Funkce:** Extrakce klíčové klinické otázky a relevantní anamnézy pro konzultujícího lékaře.
-
-### 4. Záznam o distanční konzultaci (Telemedicína)
-*   **Dle:** §5 odst. 1 písm. e) Vyhlášky 444/2024 Sb.
-*   **Funkce:** Přepis telefonických hovorů s identifikací volajícího, důvodu kontaktu a doporučeného postupu.
-
-### 5. Pracovní neschopnost a Potvrzení
-*   **Funkce:** Generování podkladů pro ČSSZ a zaměstnavatele na základě diagnózy a prognózy.
-
----
-
-## 🚀 Klíčové Funkce Aplikace
+## 🚀 Klíčové Funkce
 
 ### 🎙️ Inteligentní Zpracování Hlasu
-*   **Diarizace Mluvčích:** Automatické rozlišení řeči mezi **Lékařem** a **Pacientem**.
-*   **Multimodální Vstup:** Podpora nahrávání v reálném čase i uploadu existujících souborů (WAV, MP3, M4A).
-*   **Karaoke Mód:** Interaktivní přehrávání, kdy kliknutí na text v editoru přeskočí na přesný čas v audiu.
+*   **Diarizace Mluvčích:** Automatické rozlišení řeči mezi lékařem a pacientem.
+*   **Multimodální Vstup:** Nahrávání v reálném čase nebo upload souborů (WAV, MP3, M4A).
+*   **Karaoke Mód:** Interaktivní přehrávání svázané s textem.
 
-### 🧠 AI Analýza (Google Gemini)
-*   **Medical Reasoning:** Model `gemini-2.5-flash` trénovaný na pochopení lékařského kontextu.
-*   **Strukturovaná Data:** Automatická extrakce entit:
-    *   **Diagnózy** (návrh ICD-10 kódů)
-    *   **Medikace** (dávkování, interakce)
-    *   **Symptomy**
-    *   **Osobní údaje** (PII)
+### 🧠 AI Analýza (Secure Backend)
+*   **Gemini 2.5 Flash:** Využívá nejnovější stabilní model (prosinec/leden 2025) pro maximální přesnost.
+*   **Cloud Functions:** Veškerá AI logika běží na zabezpečeném serveru (Firebase Cloud Functions), API klíče nejsou nikdy vystaveny klientovi.
+*   **Strukturovaná Data:** Automatická extrakce diagnóz (ICD-10), medikace a osobních údajů.
 
-### ✍️ WYSIWYG Editor
-*   Plnohodnotný textový editor (postavený na Tiptap).
-*   Možnost manuálních úprav vygenerovaného textu před finalizací.
-*   Export do PDF.
+### 💾 Správa Dat a Historie
+*   **Uživatelské Účty:** Bezpečné přihlášení přes Google (Firebase Auth).
+*   **Cloud Historie:** Všechna vyšetření se ukládají do cloudu (Firestore) a jsou dostupná odkudkoliv.
+*   **Audio Archiv:** Nahrávky jsou bezpečně uloženy (Firebase Storage).
+*   **Offline Ready:** Aplikace funguje i při výpadku internetu díky lokální synchronizaci.
 
 ---
 
 ## 🛠️ Technický Stack
 
-*   **Frontend:** React 18, TypeScript, Tailwind CSS
-*   **AI Engine:** Google Gen AI SDK (`@google/genai`)
-*   **Audio:** Web Audio API (MediaRecorder)
-*   **Editor:** Tiptap Headless Editor
-*   **Architektura:** Client-side SPA (Single Page Application) bez nutnosti backendu pro zpracování audia (vše přes API).
+*   **Frontend:** React 18, TypeScript, Tailwind CSS, Vite
+*   **Backend:** Firebase Cloud Functions (Node.js)
+*   **Auth:** Firebase Authentication (Google Provider)
+*   **Database:** Cloud Firestore
+*   **Storage:** Firebase Storage
+*   **AI:** Google GenAI SDK (`@google/genai`)
 
-## 📦 Instalace a Spuštění
+---
 
-1.  **Klonování repozitáře:**
-    ```bash
-    git clone [url-repozitare]
+## 📦 Instalace a Nastavení
+
+### Prerekvizity
+1.  **Node.js** (v18+)
+2.  **Firebase CLI**: `npm install -g firebase-tools`
+3.  **Google Cloud Project** s povoleným Gemini API.
+
+### 1. Klonování a Instalace
+```bash
+git clone [url-repozitare]
+cd MedVoice-Ai
+npm install
+cd functions && npm install && cd ..
+```
+
+### 2. Konfigurace Firebase
+1.  Vytvořte projekt v [Firebase Console](https://console.firebase.google.com/).
+2.  Vytvořte webovou aplikaci a získejte konfigurační objekt.
+3.  Vytvořte soubor `.env` v kořenovém adresáři s konfigurací Firebase:
+    ```env
+    VITE_FIREBASE_API_KEY=...
+    VITE_FIREBASE_AUTH_DOMAIN=...
+    VITE_FIREBASE_PROJECT_ID=...
+    VITE_FIREBASE_STORAGE_BUCKET=...
+    VITE_FIREBASE_MESSAGING_SENDER_ID=...
+    VITE_FIREBASE_APP_ID=...
     ```
-2.  **Konfigurace:**
-    *   Aplikace vyžaduje API klíč pro Google Gemini.
-    *   Nastavte proměnnou prostředí `API_KEY` v `services/geminiService.ts` nebo použijte `.env` soubor (dle vašeho build procesu).
-3.  **Spuštění:**
-    *   Otevřete v prohlížeči přes lokální server (např. `Live Server` ve VS Code nebo `npx serve`).
 
-## ⚠️ Upozornění (Disclaimer)
+### 3. Konfigurace Cloud Functions (Backend)
+1.  Nastavte API klíč pro Gemini v `functions/.env`:
+    ```env
+    GOOGLE_GENAI_KEY=vas_gemini_api_klic
+    ```
 
-*Aplikace MedVoice AI slouží jako podpůrný nástroj pro zdravotnické pracovníky. Výstupy z umělé inteligence musí být vždy zkontrolovány a validovány lékařem před vložením do oficiální zdravotnické dokumentace (NIS). Poskytovatel nenese odpovědnost za případné nepřesnosti v automatickém přepisu.*
+### 4. Spuštění (Lokální Vývoj)
+Pro plnou funkčnost (včetně AI) je třeba spustit emulátory funkcí:
+
+1.  **Terminál 1 - Emulátory:**
+    ```bash
+    firebase emulators:start --only functions
+    ```
+    *(Ujistěte se, že máte povolené emulátory v `firebase.json`. Port 5001 je výchozí pro funkce).*
+
+2.  **Terminál 2 - Frontend:**
+    ```bash
+    npm run dev
+    ```
+
+Aplikace poběží na `http://localhost:5173` a bude se připojovat k lokálnímu backendu.
+
+---
+
+## 🚢 Nasazení (Deployment)
+
+Aplikace je připravena pro nasazení na **Firebase Hosting**.
+
+```bash
+# Sestavení frontendu i backendu
+npm run build
+cd functions && npm run build && cd ..
+
+# Nasazení (vyžaduje Blaze plán pro Functions)
+firebase deploy
+```
+
+---
+
+## ⚠️ Legislativní Upozornění
+*Aplikace MedVoice AI slouží jako podpůrný nástroj. Výstupy musí být vždy validovány lékařem před vložením do NIS. Aplikace splňuje technické předpoklady pro vedení zdravotnické dokumentace dle vyhlášky č. 444/2024 Sb., ale nenahrazuje lékařský úsudek.*

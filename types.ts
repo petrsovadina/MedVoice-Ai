@@ -6,6 +6,7 @@ export enum AppState {
   ANALYZING = 'ANALYZING',
   INTERMEDIATE_REVIEW = 'INTERMEDIATE_REVIEW',
   REVIEW = 'REVIEW',
+  HISTORY = 'HISTORY',
   ERROR = 'ERROR'
 }
 
@@ -121,10 +122,10 @@ export interface SpaPlan {
   diet_regime: string;
 }
 
-export type MedicalDocumentData = 
-  | AmbulatoryRecord 
-  | PrescriptionDraft 
-  | ReferralRequest 
+export type MedicalDocumentData =
+  | AmbulatoryRecord
+  | PrescriptionDraft
+  | ReferralRequest
   | NurseRecord
   | SickLeaveDraft
   | VisitConfirmation

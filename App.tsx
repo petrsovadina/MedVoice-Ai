@@ -9,7 +9,12 @@ import { SettingsModal } from './components/SettingsModal';
 import { AppState, AudioFile, ProcessingResult, StructuredReport, ReportType, ValidationResult, ProviderConfig, MedicalEntity } from './types';
 import { transcribeAudio, summarizeTranscript, extractEntities, detectIntents, generateStructuredDocument } from './services/geminiService';
 import { validateReport } from './services/validationService';
-import { RotateCcw, AlertTriangle, Key } from 'lucide-react';
+import { RotateCcw, AlertTriangle, Key, Loader2 } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
+import { LoginScreen } from './components/LoginScreen';
+import { dbService } from './services/dbService';
+import { storageService } from './services/storageService';
+import { HistoryDashboard } from './components/HistoryDashboard';
 
 const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
   name: "MUDr. Jan Novák",
@@ -22,6 +27,7 @@ const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
 };
 
 const App: React.FC = () => {
+  const { user, loading } = useAuth();
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [lastAudioFile, setLastAudioFile] = useState<AudioFile | null>(null);
@@ -37,7 +43,48 @@ const App: React.FC = () => {
   const [isProcessingFinal, setIsProcessingFinal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig>(DEFAULT_PROVIDER_CONFIG);
-  const [errorDetails, setErrorDetails] = useState<{message: string, isQuota: boolean} | null>(null);
+  const [errorDetails, setErrorDetails] = useState<{ message: string, isQuota: boolean } | null>(null);
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [tempApiKey, setTempApiKey] = useState("");
+
+  // Load user settings on login
+  React.useEffect(() => {
+    if (user) {
+      dbService.getUserSettings(user.uid).then(settings => {
+        if (settings) {
+          setProviderConfig(settings);
+        } else if (user.displayName) {
+          // Initialize with Google name if no settings
+          setProviderConfig(prev => ({ ...prev, name: user.displayName! }));
+        }
+      });
+    }
+  }, [user]);
+
+  const handleUpdateSettings = async (newConfig: ProviderConfig) => {
+    setProviderConfig(newConfig);
+    if (user) {
+      try {
+        await dbService.saveUserSettings(user.uid, newConfig);
+      } catch (e) {
+        console.error("Failed to save settings", e);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-primary-500" size={40} />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
 
   const handleAudioReady = async (file: AudioFile) => {
     setLastAudioFile(file);
@@ -45,14 +92,14 @@ const App: React.FC = () => {
     setAudioUrl(url);
     setAppState(AppState.PROCESSING_AUDIO);
     setErrorDetails(null);
-    
+
     try {
       setProgress("Přepisuji nahrávku pomocí AI...");
       const { text, segments } = await transcribeAudio(file.blob, file.mimeType);
-      
+
       setAppState(AppState.ANALYZING);
       setProgress(providerConfig.useThinkingMode ? "Hloubková AI analýza (může trvat až 1 minutu)..." : "Extrahuje klinická data a vytvářím souhrn...");
-      
+
       const [summary, entities] = await Promise.all([
         summarizeTranscript(text, providerConfig.useThinkingMode),
         extractEntities(text)
@@ -65,7 +112,7 @@ const App: React.FC = () => {
         summary,
         entities
       }));
-      
+
       setAppState(AppState.INTERMEDIATE_REVIEW);
 
     } catch (error: any) {
@@ -80,38 +127,74 @@ const App: React.FC = () => {
   };
 
   const handleFinalizeDocuments = async (updatedSummary: string, updatedEntities: MedicalEntity[]) => {
-      setIsProcessingFinal(true);
-      setErrorDetails(null);
-      setProgress(providerConfig.useThinkingMode ? "Generování s hloubkovou úvahou (Gemini Pro Thinking)..." : "Generuji strukturované dokumenty dle specifikace...");
-      try {
-          const intents = await detectIntents(updatedSummary);
-          const reports = await Promise.all(
-            intents.map(type => generateStructuredDocument(updatedSummary, type, updatedEntities, providerConfig.useThinkingMode))
-          );
+    setIsProcessingFinal(true);
+    setErrorDetails(null);
+    setProgress(providerConfig.useThinkingMode ? "Generování s hloubkovou úvahou (Gemini Pro Thinking)..." : "Generuji strukturované dokumenty dle specifikace...");
+    try {
+      const intents = await detectIntents(updatedSummary);
+      const reports = await Promise.all(
+        intents.map(type => generateStructuredDocument(updatedSummary, type, updatedEntities, providerConfig.useThinkingMode))
+      );
 
-          const validations: Record<string, ValidationResult> = {};
-          reports.forEach(r => validations[r.id] = validateReport(r));
+      const validations: Record<string, ValidationResult> = {};
+      reports.forEach(r => validations[r.id] = validateReport(r));
 
-          setResult(prev => ({ 
-            ...prev, 
-            summary: updatedSummary, 
-            entities: updatedEntities, 
-            reports 
-          }));
-          
-          setValidationResults(validations);
-          setAppState(AppState.REVIEW);
-      } catch (error: any) {
-          console.error(error);
-          const isQuota = error.status === 429 || error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED');
-          setErrorDetails({
-            message: isQuota ? "Byla překročena kvóta API při generování dokumentů." : (error.message || "Chyba při finalizaci."),
-            isQuota
-          });
-          setAppState(AppState.ERROR);
-      } finally {
-          setIsProcessingFinal(false);
+      setResult(prev => ({
+        ...prev,
+        summary: updatedSummary,
+        entities: updatedEntities,
+        reports
+      }));
+
+      setValidationResults(validations);
+      setAppState(AppState.REVIEW);
+    } catch (error: any) {
+      console.error(error);
+      const isQuota = error.status === 429 || error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED');
+      setErrorDetails({
+        message: isQuota ? "Byla překročena kvóta API při generování dokumentů." : (error.message || "Chyba při finalizaci."),
+        isQuota
+      });
+      setAppState(AppState.ERROR);
+    } finally {
+      setIsProcessingFinal(false);
+    }
+  };
+
+  const handleSaveSession = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      let uploadedAudioUrl: string | undefined = undefined;
+      const sessionId = crypto.randomUUID();
+
+      if (lastAudioFile) {
+        uploadedAudioUrl = await storageService.uploadAudio(user.uid, lastAudioFile.blob, sessionId);
       }
+
+      await dbService.saveSession(user.uid, result, 'completed', uploadedAudioUrl, sessionId);
+
+      // Optional: Show toast notification
+      alert("Záznam byl úspěšně uložen do historie.");
+    } catch (e) {
+      console.error("Save failed", e);
+      alert("Chyba při ukládání záznamu.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveApiKey = () => {
+    if (tempApiKey.trim()) {
+      localStorage.setItem('custom_api_key', tempApiKey.trim());
+      // Clear error and retry if possible
+      setErrorDetails(null);
+      if (lastAudioFile) {
+        handleAudioReady(lastAudioFile);
+      } else {
+        setAppState(AppState.IDLE);
+      }
+    }
   };
 
   const handleOpenKeySelection = async () => {
@@ -122,11 +205,31 @@ const App: React.FC = () => {
         await window.aistudio.openSelectKey();
         // Po úspěšném výběru klíče zkusíme akci znovu pokud máme data
         if (lastAudioFile && appState === AppState.ERROR) {
-           handleAudioReady(lastAudioFile);
+          handleAudioReady(lastAudioFile);
         }
       }
     } catch (e) {
       console.error("Failed to open key selector", e);
+    }
+  };
+
+  const handleLoadSession = async (sessionId: string) => {
+    try {
+      const data = await dbService.getSessionData(sessionId);
+      if (data) {
+        setResult({
+          rawTranscript: data.transcript.text,
+          segments: data.transcript.segments,
+          summary: data.fullSummary,
+          entities: data.entities,
+          reports: data.reports
+        });
+        setAudioUrl(data.audioUrl || null);
+        setAppState(AppState.REVIEW);
+      }
+    } catch (e) {
+      console.error("Failed to load session", e);
+      alert("Nepodařilo se načíst záznam.");
     }
   };
 
@@ -140,8 +243,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col font-inter bg-slate-50">
-      <Header onOpenSettings={() => setIsSettingsOpen(true)} doctorName={providerConfig.name} specialization={providerConfig.specializationCode} />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={providerConfig} onSave={setProviderConfig} />
+      <Header
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        doctorName={providerConfig.name}
+        specialization={providerConfig.specializationCode}
+        onHistoryClick={() => setAppState(AppState.HISTORY)}
+        onHomeClick={reset}
+      />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={providerConfig} onSave={handleUpdateSettings} />
 
       <main className="flex-1 w-full mx-auto px-6 py-4 overflow-hidden">
         {(appState === AppState.IDLE || appState === AppState.RECORDING || appState === AppState.PROCESSING_AUDIO || appState === AppState.ANALYZING) && (
@@ -153,93 +262,124 @@ const App: React.FC = () => {
         {appState === AppState.ERROR && (
           <div className="flex flex-col items-center justify-center min-h-[70vh] animate-in fade-in zoom-in-95 duration-300">
             <div className="bg-white p-10 rounded-[40px] border border-red-100 shadow-2xl shadow-red-500/10 text-center max-w-md">
-                <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <AlertTriangle size={40} className="text-red-500" />
-                </div>
-                <h2 className="text-2xl font-black text-slate-800 mb-4 uppercase tracking-tight">Ups, něco se nepovedlo</h2>
-                <p className="text-slate-500 mb-8 font-medium">{errorDetails?.message}</p>
-                
-                <div className="flex flex-col gap-3">
-                    <button 
-                        onClick={() => lastAudioFile && handleAudioReady(lastAudioFile)}
-                        className="w-full py-4 bg-primary-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-primary-700 shadow-lg shadow-primary-500/30 transition-all active:scale-95"
-                    >
-                        Zkusit znovu
-                    </button>
-                    
-                    {errorDetails?.isQuota && (
-                        <button 
-                            onClick={handleOpenKeySelection}
-                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3"
-                        >
-                            <Key size={18} /> Použít vlastní API klíč
-                        </button>
-                    )}
+              <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={40} className="text-red-500" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-800 mb-4 uppercase tracking-tight">Ups, něco se nepovedlo</h2>
+              <p className="text-slate-500 mb-8 font-medium">{errorDetails?.message}</p>
 
-                    <button 
-                        onClick={reset}
-                        className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest hover:text-slate-600 transition-all"
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => lastAudioFile && handleAudioReady(lastAudioFile)}
+                  className="w-full py-4 bg-primary-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-primary-700 shadow-lg shadow-primary-500/30 transition-all active:scale-95"
+                >
+                  Zkusit znovu
+                </button>
+
+                {errorDetails?.isQuota || errorDetails?.message.includes("API key") ? (
+                  <div className="w-full space-y-3">
+                    <div className="relative">
+                      <Key className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <input
+                        type="password"
+                        placeholder="Vložte váš Google API klíč"
+                        value={tempApiKey}
+                        onChange={(e) => setTempApiKey(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none font-bold text-slate-600"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSaveApiKey}
+                      disabled={!tempApiKey.trim()}
+                      className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold uppercase tracking-widest hover:bg-black shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Zrušit a začít znovu
+                      Uložit a Zkusit znovu
                     </button>
-                </div>
-                
-                {errorDetails?.isQuota && (
-                   <p className="mt-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
-                      Pro bezlimitní provoz doporučujeme použít vlastní API klíč z placeného projektu Google Cloud. 
-                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-primary-500 block underline mt-1">Dokumentace k platbám</a>
-                   </p>
+                  </div>
+                ) : (
+                  errorDetails?.isQuota && (
+                    <button
+                      onClick={handleOpenKeySelection}
+                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3"
+                    >
+                      <Key size={18} /> Použít vlastní API klíč
+                    </button>
+                  )
                 )}
+
+                <button
+                  onClick={reset}
+                  className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest hover:text-slate-600 transition-all"
+                >
+                  Zrušit a začít znovu
+                </button>
+              </div>
+
+              {errorDetails?.isQuota && (
+                <p className="mt-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
+                  Pro bezlimitní provoz doporučujeme použít vlastní API klíč z placeného projektu Google Cloud.
+                  <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-primary-500 block underline mt-1">Dokumentace k platbám</a>
+                </p>
+              )}
             </div>
           </div>
         )}
 
         {appState === AppState.INTERMEDIATE_REVIEW && (
-           <WorkspaceEditor 
-              transcript={result.rawTranscript}
-              segments={result.segments}
-              summary={result.summary}
-              entities={result.entities}
-              onFinalize={handleFinalizeDocuments}
-              isProcessing={isProcessingFinal}
-              audioUrl={audioUrl}
-           />
+          <WorkspaceEditor
+            transcript={result.rawTranscript}
+            segments={result.segments}
+            summary={result.summary}
+            entities={result.entities}
+            onFinalize={handleFinalizeDocuments}
+            isProcessing={isProcessingFinal}
+            audioUrl={audioUrl}
+          />
         )}
 
         {appState === AppState.REVIEW && (
           <div className="h-full flex flex-col gap-3 animate-in fade-in duration-500">
-             <div className="flex justify-between items-center px-1">
-                <div className="flex items-center gap-3">
-                   <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Finalizace Dokumentace</h2>
-                   <div className="flex gap-2">
-                      {result.reports.map(r => (
-                        <span key={r.id} className="text-[8px] font-black bg-slate-200 px-2 py-0.5 rounded uppercase">{r.reportType}</span>
-                      ))}
-                   </div>
+            <div className="flex justify-between items-center px-1">
+              <div className="flex items-center gap-3">
+                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Finalizace Dokumentace</h2>
+                <div className="flex gap-2">
+                  {result.reports.map(r => (
+                    <span key={r.id} className="text-[8px] font-black bg-slate-200 px-2 py-0.5 rounded uppercase">{r.reportType}</span>
+                  ))}
                 </div>
-                <button onClick={reset} className="flex items-center gap-1.5 text-primary-600 font-bold text-[9px] uppercase tracking-widest hover:text-primary-700 transition-colors">
-                    <RotateCcw size={12} strokeWidth={3} /> Nový Pacient / Session
-                </button>
-             </div>
-             
-             <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
-                <div className="col-span-3 h-full min-h-0">
-                    <TranscriptEditor transcript={result.rawTranscript} segments={result.segments} entities={result.entities} audioUrl={audioUrl} />
-                </div>
-                <div className="col-span-9 h-full min-h-0">
-                    <AnalysisDisplay 
-                        entities={result.entities} 
-                        reports={result.reports}
-                        validationResults={validationResults}
-                        onReportChange={(id, nr) => setResult(p => ({...p, reports: p.reports.map(r => r.id === id ? nr : r)}))}
-                        onEntitiesChange={(ents) => setResult(p => ({...p, entities: ents}))}
-                        onRegenerateReports={async () => handleFinalizeDocuments(result.summary, result.entities)}
-                        isRegenerating={isProcessingFinal}
-                        providerConfig={providerConfig}
-                    />
-                </div>
-             </div>
+              </div>
+              <button onClick={reset} className="flex items-center gap-1.5 text-primary-600 font-bold text-[9px] uppercase tracking-widest hover:text-primary-700 transition-colors">
+                <RotateCcw size={12} strokeWidth={3} /> Nový Pacient / Session
+              </button>
+            </div>
+
+            <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
+              <div className="col-span-3 h-full min-h-0">
+                <TranscriptEditor transcript={result.rawTranscript} segments={result.segments} entities={result.entities} audioUrl={audioUrl} />
+              </div>
+              <div className="col-span-9 h-full min-h-0">
+                <AnalysisDisplay
+                  entities={result.entities}
+                  reports={result.reports}
+                  validationResults={validationResults}
+                  onReportChange={(id, nr) => setResult(p => ({ ...p, reports: p.reports.map(r => r.id === id ? nr : r) }))}
+                  onEntitiesChange={(ents) => setResult(p => ({ ...p, entities: ents }))}
+                  onRegenerateReports={async () => handleFinalizeDocuments(result.summary, result.entities)}
+                  isRegenerating={isProcessingFinal}
+                  providerConfig={providerConfig}
+                  onSave={handleSaveSession}
+                  isSaving={isSaving}
+                />
+              </div>
+            </div>
           </div>
+        )}
+
+        {appState === AppState.HISTORY && (
+          <HistoryDashboard
+            onLoadSession={handleLoadSession}
+            onNewSession={reset}
+          />
         )}
       </main>
     </div>
