@@ -66,9 +66,14 @@ cd functions && npm install && cd ..
     ```
 
 ### 3. Konfigurace Cloud Functions (Backend)
-1.  Nastavte API klíč pro Gemini v `functions/.env`:
+### 3. Konfigurace Cloud Functions (Backend)
+1.  **Lokální Vývoj:** Vytvořte soubor `functions/.env.local` (tento soubor je ignorován Gitem) podle vzoru `functions/.env.example`:
     ```env
     GOOGLE_GENAI_KEY=vas_gemini_api_klic
+    ```
+2.  **Produkce:** Pro nasazení použijte Firebase Secrets (vyžaduje Blaze plán):
+    ```bash
+    firebase functions:secrets:set GOOGLE_GENAI_KEY
     ```
 
 ### 4. Spuštění (Lokální Vývoj)

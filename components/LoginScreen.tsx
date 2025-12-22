@@ -11,10 +11,13 @@ export const LoginScreen: React.FC = () => {
         setIsLoggingIn(true);
         setError(null);
         try {
+            console.log("[LoginScreen] Starting Google Sign-In...");
             await signInWithGoogle();
+            console.log("[LoginScreen] Sign-In successful.");
         } catch (e: any) {
-            setError("Nepodařilo se přihlásit. Zkuste to prosím znovu.");
-            console.error(e);
+            console.error("[LoginScreen] Login ERROR:", e);
+            // Display exact error code for debugging
+            setError(`Chyba: ${e.code || e.message}`);
             setIsLoggingIn(false);
         }
     };

@@ -17,24 +17,19 @@ async function callFunction<T, R>(name: string, data: T): Promise<R> {
   }
 }
 
-export const transcribeAudio = async (audioBlob: Blob, mimeType: string): Promise<{ text: string; segments: TranscriptSegment[] }> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      try {
-        const base64Data = (reader.result as string).split(',')[1];
-        const result = await callFunction<{ audio: string, mimeType: string }, { text: string, segments: TranscriptSegment[] }>(
-          'transcribeAudio',
-          { audio: base64Data, mimeType }
-        );
-        resolve(result);
-      } catch (e) {
-        reject(e);
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(audioBlob);
-  });
+export const transcribeAudio = async (storagePath: string, mimeType: string): Promise<{ text: string; segments: TranscriptSegment[] }> => {
+  console.log(`[geminiService] transcribeAudio called with path: ${storagePath}`);
+  try {
+    const result = await callFunction<{ storagePath: string, mimeType: string }, { text: string, segments: TranscriptSegment[] }>(
+      'transcribeAudio',
+      { storagePath, mimeType }
+    );
+    console.log(`[geminiService] transcribeAudio success.`);
+    return result;
+  } catch (error) {
+    console.error(`[geminiService] transcribeAudio failed:`, error);
+    throw error;
+  }
 };
 
 export const summarizeTranscript = async (transcript: string, useThinking: boolean = false): Promise<string> => {
@@ -68,4 +63,7 @@ export const generateStructuredDocument = async (summary: string, type: ReportTy
     { summary, type, entities, useThinking }
   );
   return result.report;
+};
+export const checkStorageConfig = async (): Promise<any> => {
+  return callFunction('checkStorageConfig', {});
 };

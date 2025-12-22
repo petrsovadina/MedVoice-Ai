@@ -22,7 +22,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        console.log("[AuthContext] Setting up auth state listener");
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            console.log("[AuthContext] Auth state changed:", currentUser ? `User: ${currentUser.uid}` : "No user");
             setUser(currentUser);
             setLoading(false);
         });
@@ -31,13 +33,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const signInWithGoogle = async (useRedirect = false) => {
         try {
+            console.log("[AuthContext] signInWithGoogle called", { useRedirect, isMobile: isMobile() });
             if (useRedirect || isMobile()) {
+                console.log("[AuthContext] Using redirect...");
                 await signInWithRedirect(auth, googleProvider);
             } else {
-                await signInWithPopup(auth, googleProvider);
+                console.log("[AuthContext] Using popup...");
+                const result = await signInWithPopup(auth, googleProvider);
+                console.log("[AuthContext] Popup success. User:", result.user?.uid);
             }
         } catch (error) {
-            console.error("Login failed", error);
+            console.error("[AuthContext] Login failed", error);
             throw error;
         }
     };

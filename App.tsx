@@ -38,7 +38,9 @@ const App: React.FC = () => {
     entities: [],
     reports: []
   });
+  const [uploadedAudio, setUploadedAudio] = useState<{ path: string, url: string, sessionId: string } | null>(null);
   const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
+
   const [progress, setProgress] = useState<string>("");
   const [isProcessingFinal, setIsProcessingFinal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -94,8 +96,25 @@ const App: React.FC = () => {
     setErrorDetails(null);
 
     try {
-      setProgress("Přepisuji nahrávku pomocí AI...");
-      const { text, segments } = await transcribeAudio(file.blob, file.mimeType);
+      setProgress("Nahrávám nahrávku a přepisuji pomocí AI...");
+      console.log("[App] Starting upload and transcription...");
+
+      const sessionId = crypto.randomUUID();
+
+      // Debug bucket info
+      try {
+        const { checkStorageConfig } = await import('./services/geminiService');
+        const bucketInfo = await checkStorageConfig();
+        console.log("[App] Storage Bucket Info:", bucketInfo);
+      } catch (e) { console.error("Bucket check failed", e); }
+
+      const { fullPath, downloadURL } = await storageService.uploadAudio(user.uid, file.blob, sessionId);
+      console.log(`[App] Upload complete. Path: ${fullPath}, URL: ${downloadURL}`);
+      setUploadedAudio({ path: fullPath, url: downloadURL, sessionId });
+
+      console.log("[App] Calling transcribeAudio...");
+      const { text, segments } = await transcribeAudio(fullPath, file.mimeType);
+      console.log("[App] Transcription complete.");
 
       setAppState(AppState.ANALYZING);
       setProgress(providerConfig.useThinkingMode ? "Hloubková AI analýza (může trvat až 1 minutu)..." : "Extrahuje klinická data a vytvářím souhrn...");
@@ -166,10 +185,14 @@ const App: React.FC = () => {
     setIsSaving(true);
     try {
       let uploadedAudioUrl: string | undefined = undefined;
-      const sessionId = crypto.randomUUID();
+      const sessionId = uploadedAudio?.sessionId || crypto.randomUUID();
 
-      if (lastAudioFile) {
-        uploadedAudioUrl = await storageService.uploadAudio(user.uid, lastAudioFile.blob, sessionId);
+      if (uploadedAudio) {
+        uploadedAudioUrl = uploadedAudio.url;
+      } else if (lastAudioFile) {
+        // Fallback if not uploaded yet (should not happen in normal flow but good for valid)
+        const res = await storageService.uploadAudio(user.uid, lastAudioFile.blob, sessionId);
+        uploadedAudioUrl = res.downloadURL;
       }
 
       await dbService.saveSession(user.uid, result, 'completed', uploadedAudioUrl, sessionId);
@@ -238,6 +261,7 @@ const App: React.FC = () => {
     setResult({ rawTranscript: '', summary: '', segments: [], entities: [], reports: [] });
     setAudioUrl(null);
     setLastAudioFile(null);
+    setUploadedAudio(null);
     setErrorDetails(null);
   };
 

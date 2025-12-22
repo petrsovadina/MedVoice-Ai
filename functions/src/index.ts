@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import { TranscriptSegment, MedicalEntity, ReportType } from "./types";
+import { PROMPTS } from "./prompts";
 
 admin.initializeApp();
 
@@ -10,9 +11,24 @@ admin.initializeApp();
 const getAIClient = () => {
     const apiKey = process.env.GOOGLE_GENAI_KEY;
     if (!apiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'API Key not configured on server.');
+        throw new functions.https.HttpsError('failed-precondition', 'Gemini API Key is not configured in the Backend Environment.');
     }
     return new GoogleGenAI({ apiKey });
+};
+
+const handleError = (error: any, context: string): functions.https.HttpsError => {
+    console.error(`[${context}] Error:`, error);
+
+    // Check for resource exhaustion (Quota exceeded)
+    if (error.status === 429 || error.toString().includes('429') || error.toString().includes('RESOURCE_EXHAUSTED')) {
+        return new functions.https.HttpsError('resource-exhausted', `Quota exceeded for Gemini API in ${context}.`);
+    }
+
+    if (error instanceof functions.https.HttpsError) {
+        return error;
+    }
+
+    return new functions.https.HttpsError('internal', `An unexpected error occurred in ${context}: ${error.message || error}`);
 };
 
 const assertAuth = (context: functions.https.CallableContext) => {
@@ -33,20 +49,42 @@ const cleanAndParseJSON = <T>(text: string | undefined, fallback: T): T => {
 // 1. Transcribe Audio
 export const transcribeAudio = functions.runWith({ timeoutSeconds: 300, memory: '1GB' }).https.onCall(async (data, context) => {
     assertAuth(context);
-    const { audio, mimeType } = data; // audio is base64 string
+    const { storagePath, mimeType } = data;
 
-    if (!audio || !mimeType) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing audio or mimeType');
+    if (!storagePath || !mimeType) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing storagePath or mimeType');
     }
 
     try {
+        console.log(`[transcribeAudio] Started with storagePath: ${storagePath}, mimeType: ${mimeType}`);
+
+        const bucket = admin.storage().bucket();
+        console.log(`[transcribeAudio] Bucket name: ${bucket.name}`);
+
+        const file = bucket.file(storagePath);
+        console.log(`[transcribeAudio] Checking existence of file...`);
+        const [exists] = await file.exists();
+        console.log(`[transcribeAudio] File exists: ${exists}`);
+
+        if (!exists) {
+            console.error(`[transcribeAudio] File not found: ${storagePath}`);
+            throw new functions.https.HttpsError('not-found', 'Audio file not found in storage');
+        }
+
+        console.log(`[transcribeAudio] Downloading file...`);
+        const [buffer] = await file.download();
+        console.log(`[transcribeAudio] Download complete. Buffer size: ${buffer.length}`);
+
+        const audioBase64 = buffer.toString('base64');
+        console.log(`[transcribeAudio] Converted to base64. Calling Gemini...`);
+
         const ai = getAIClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: {
                 parts: [
-                    { inlineData: { mimeType, data: audio } },
-                    { text: "Jsi lékařský zapisovatel. Proveď doslovný přepis v JSON: {segments: [{speaker, text, start, end}]}" }
+                    { inlineData: { mimeType, data: audioBase64 } },
+                    { text: PROMPTS.TRANSCRIBE_SYSTEM }
                 ]
             },
             config: { responseMimeType: "application/json" }
@@ -58,8 +96,7 @@ export const transcribeAudio = functions.runWith({ timeoutSeconds: 300, memory: 
             segments: parsed.segments
         };
     } catch (error: any) {
-        console.error("Transcription failed", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw handleError(error, "transcribeAudio");
     }
 });
 
@@ -74,28 +111,11 @@ export const summarizeTranscript = functions.https.onCall(async (data, context) 
         const ai = getAIClient();
         const response = await ai.models.generateContent({
             model,
-            contents: `
-              Vytvoř profesionální, EXTRÉMNĚ KOMPAKTNÍ klinický souhrn. Používej telegrafický styl.
-              Cílem je maximum informací na minimální ploše. Žádné úvodní věty, žádná vata.
-              
-              STRUKTURA:
-              ### **[S] Subjektivně**
-              - Telegrafický výčet potíží a anamnézy.
-              ### **[O] Objektivně**
-              - Klinický nález, stav vědomí.
-              ### **[Dg] Diagnóza**
-              - Seznam diagnóz vč. MKN-10.
-              ### **[P] Plán**
-              - Medikace, doporučení, kontrola.
-              
-              PŘEPIS:
-              ${transcript}
-            `,
+            contents: `${PROMPTS.SUMMARIZE_SYSTEM}\n${transcript}`,
         });
         return { summary: response.text || "" };
     } catch (error: any) {
-        console.error("Summarization failed", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw handleError(error, "summarizeTranscript");
     }
 });
 
@@ -108,20 +128,13 @@ export const extractEntities = functions.https.onCall(async (data, context) => {
         const ai = getAIClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `
-              Z textu extrahuj entity do JSON formátu.
-              Kategorie: DIAGNOSIS, MEDICATION, SYMPTOM, PII, OTHER.
-              JSON: {"entities": [{"category": "...", "text": "..."}]}
-              TEXT:
-              ${transcript}
-            `,
+            contents: `${PROMPTS.EXTRACT_ENTITIES_SYSTEM}\n${transcript}`,
             config: { responseMimeType: "application/json" }
         });
         const parsed = cleanAndParseJSON<{ entities: MedicalEntity[] }>(response.text, { entities: [] });
         return { entities: parsed.entities || [] };
     } catch (error: any) {
-        console.error("Extraction failed", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw handleError(error, "extractEntities");
     }
 });
 
@@ -134,18 +147,13 @@ export const detectIntents = functions.https.onCall(async (data, context) => {
         const ai = getAIClient();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Urči dokumenty k vygenerování. Vždy zahrň AMBULATORY_RECORD.
-                  Léky -> PRESCRIPTION_DRAFT. Neschopenka -> SICK_LEAVE_DRAFT.
-                  JSON {intents: []}. 
-                  TEXT:
-                  ${summary}`,
+            contents: `${PROMPTS.DETECT_INTENTS_SYSTEM}\n${summary}`,
             config: { responseMimeType: "application/json" }
         });
         const parsed = cleanAndParseJSON<{ intents: ReportType[] }>(response.text, { intents: [ReportType.AMBULATORY_RECORD] });
         return { intents: parsed.intents };
     } catch (error: any) {
-        console.error("Intent detection failed", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw handleError(error, "detectIntents");
     }
 });
 
@@ -168,11 +176,7 @@ export const generateStructuredDocument = functions.https.onCall(async (data, co
         const ai = getAIClient();
         const response = await ai.models.generateContent({
             model,
-            contents: `Vygeneruj strukturovaný dokument ${type} v JSON. 
-                  Dodržuj věcnost a kompaktnost.
-                  Entity: ${JSON.stringify(entities)}
-                  Schéma: ${schema}
-                  Souhrn: ${summary}`,
+            contents: `${PROMPTS.GENERATE_REPORT_SYSTEM(type, JSON.stringify(entities), schema)}\n${summary}`,
             config: { responseMimeType: "application/json" }
         });
 
@@ -189,7 +193,24 @@ export const generateStructuredDocument = functions.https.onCall(async (data, co
             }
         };
     } catch (error: any) {
-        console.error("Report generation failed", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw handleError(error, "generateStructuredDocument");
+    }
+});
+
+export const checkStorageConfig = functions.https.onCall(async (data, context) => {
+    assertAuth(context);
+    try {
+        const bucket = admin.storage().bucket(); // Gets default bucket
+        const [exists] = await bucket.exists();
+        return {
+            bucketName: bucket.name,
+            exists: exists,
+            projectId: (admin.app().options.credential as any)?.projectId || process.env.GCLOUD_PROJECT,
+            storageBucketOption: admin.instanceId().app.options.storageBucket,
+            message: "Bucket configuration info"
+        };
+    } catch (error: any) {
+        console.error("Storage check failed", error);
+        return { error: error.message };
     }
 });

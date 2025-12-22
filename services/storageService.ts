@@ -7,7 +7,7 @@ export const storageService = {
      * Uploads an audio file to Firebase Storage
      * path: users/{userId}/audio/{sessionId}/{filename}
      */
-    uploadAudio: async (userId: string, file: Blob, sessionId: string): Promise<string> => {
+    uploadAudio: async (userId: string, file: Blob, sessionId: string): Promise<{ downloadURL: string, fullPath: string }> => {
         // Generate a unique filename or use a standard one (e.g. recording.wav)
         // We use the mime type to determine extension if possible, default to .wav or .webm
         const extension = file.type.includes('webm') ? 'webm' : 'wav';
@@ -18,7 +18,7 @@ export const storageService = {
         const snapshot = await uploadBytes(storageRef, file);
         const downloadURL = await getDownloadURL(snapshot.ref);
 
-        return downloadURL;
+        return { downloadURL, fullPath: path };
     },
 
     /**

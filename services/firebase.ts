@@ -11,7 +11,7 @@ import {
     initializeFirestore,
     enableIndexedDbPersistence
 } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
@@ -57,6 +57,7 @@ const googleProvider = new GoogleAuthProvider();
 // Connect to emulators if in dev mode (optional, but good for testing)
 if (location.hostname === "localhost") {
     connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+    // connectStorageEmulator(storage, "127.0.0.1", 9199);
 }
 
 export { auth, db, storage, functions, googleProvider };
