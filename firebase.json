@@ -21,7 +21,7 @@
     }
   ],
   "hosting": {
-    "public": "dist",
+    "public": "landingpage-web/dist",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -32,7 +32,8 @@
         "source": "**",
         "destination": "/index.html"
       }
-    ]
+    ],
+    "cleanUrls": true
   },
   "emulators": {
     "functions": {

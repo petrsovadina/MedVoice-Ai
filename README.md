@@ -1,113 +1,162 @@
 # MedVoice AI 🩺
 
-**Inteligentní dokumentační asistent pro moderní zdravotnictví**
+**Inteligentní dokumentační platforma pro moderní zdravotnictví**
 
-MedVoice AI je webová aplikace nové generace, která využívá generativní umělou inteligenci (Google Gemini) k automatizaci tvorby zdravotnické dokumentace. Transformuje hlasový záznam konzultace (prezenční i distanční) na strukturované lékařské záznamy v souladu s platnou legislativou ČR.
+MedVoice AI je komplexní ekosystém využívající generativní umělou inteligenci (Google Gemini) k automatizaci tvorby zdravotnické dokumentace. Platforma se skládá z veřejné prezentace (Landing Page), samotné lékařské aplikace (Doctor Dashboard) a zabezpečeného cloudu.
+
+---
+
+## 🏛️ Architektura Projektu
+
+Projekt je spravován jako **monorepo**, které sjednocuje tři klíčové komponenty:
+
+| Komponenta | Cesta | Technologie | Popis |
+| :--- | :--- | :--- | :--- |
+| **Hlavní Aplikace** | `/` (root) | React 19, Vite | Nástroj pro lékaře: nahrávání, diktování, správa pacientů. |
+| **Landing Page** | `/landingpage-web` | React 19, Tailwind v4 | Veřejný web s prezentací a AI asistentem. |
+| **Backend** | `/functions` | Firebase Functions, Node.js | Bezpečná cloudová logika, integrace s Gemini AI. |
+
+Složka `/services` v rootu obsahuje sdílený kód a API integrace využívané hlavní aplikací.
 
 ---
 
 ## 🚀 Klíčové Funkce
 
-### 🎙️ Inteligentní Zpracování Hlasu
-*   **Diarizace Mluvčích:** Automatické rozlišení řeči mezi lékařem a pacientem.
-*   **Multimodální Vstup:** Nahrávání v reálném čase nebo upload souborů (WAV, MP3, M4A).
-*   **Karaoke Mód:** Interaktivní přehrávání svázané s textem.
+### 🩺 Aplikace pro Lékaře (Dashboard)
+*   **Ambient Scribe:** Pasivní poslech a automatický přepis konzultace lékař-pacient.
+*   **Inteligentní Editor:** Interaktivní propojení textu se zvukovým záznamem.
+*   **Generování Zpráv:** Automatická tvorba strukturovaných zpráv dle vyhlášky 444/2024 Sb. (Subjektivní, Objektivní, Diagnóza, Plán).
+*   **Offline Režim:** Plná funkčnost bez internetu se synchronizací po připojení.
 
-### 🧠 AI Analýza (Secure Backend)
-*   **Gemini 2.5 Flash:** Využívá nejnovější stabilní model (prosinec/leden 2025) pro maximální přesnost.
-*   **Cloud Functions:** Veškerá AI logika běží na zabezpečeném serveru (Firebase Cloud Functions), API klíče nejsou nikdy vystaveny klientovi.
-*   **Strukturovaná Data:** Automatická extrakce diagnóz (ICD-10), medikace a osobních údajů.
+### 🌐 Veřejný Web (Landing Page)
+*   **Showcase Technologií:** Interaktivní ukázky funkcí.
+*   **AI Chatbot:** Asistent pro dotazy ohledně legislativy a bezpečnosti, poháněný Gemini SDK.
 
-### 💾 Správa Dat a Historie
-*   **Uživatelské Účty:** Bezpečné přihlášení přes Google (Firebase Auth).
-*   **Cloud Historie:** Všechna vyšetření se ukládají do cloudu (Firestore) a jsou dostupná odkudkoliv.
-*   **Audio Archiv:** Nahrávky jsou bezpečně uloženy (Firebase Storage).
-*   **Offline Ready:** Aplikace funguje i při výpadku internetu díky lokální synchronizaci.
+### 🔒 Backend & Bezpečnost
+*   **HIPAA/GDPR Compliance:** Bezpečné zpracování a ukládání dat.
+*   **Diarizace Mluvčích:** Automatické rozlišení hlasů (Lékař/Pacient).
+*   **Gemini 2.0 Flash:** Nejnovější AI model optimalizovaný pro medicínskou analýzu.
 
 ---
 
 ## 🛠️ Technický Stack
 
-*   **Frontend:** React 18, TypeScript, Tailwind CSS, Vite
-*   **Backend:** Firebase Cloud Functions (Node.js)
-*   **Auth:** Firebase Authentication (Google Provider)
-*   **Database:** Cloud Firestore
-*   **Storage:** Firebase Storage
-*   **AI:** Google GenAI SDK (`@google/genai`)
+*   **Frontend:** React 19, TypeScript, Tailwind CSS, Vite.
+*   **Backend:** Firebase Cloud Functions (Node.js 20).
+*   **Databáze & Storage:** Cloud Firestore, Firebase Storage.
+*   **Autentizace:** Firebase Authentication.
+*   **AI:** Google GenAI SDK (Gemini).
 
 ---
 
 ## 📦 Instalace a Nastavení
 
 ### Prerekvizity
-1.  **Node.js** (v18+)
-2.  **Firebase CLI**: `npm install -g firebase-tools`
-3.  **Google Cloud Project** s povoleným Gemini API.
+*   **Node.js** (verze 20+)
+*   **Firebase CLI**: Nainstalujte globálně pomocí `npm install -g firebase-tools`
+*   **Google Cloud Project**: S aktivním Gemini API a Firebase službami.
 
-### 1. Klonování a Instalace
+### 1. Stažení Repozitáře
 ```bash
 git clone [url-repozitare]
 cd MedVoice-Ai
+```
+
+### 2. Instalace Závislostí
+Projekt vyžaduje instalaci závislostí pro každou část zvlášť:
+
+```bash
+# 1. Hlavní Aplikace (Root)
 npm install
+
+# 2. Landing Page
+cd landingpage-web && npm install && cd ..
+
+# 3. Backend (Functions)
 cd functions && npm install && cd ..
 ```
 
-### 2. Konfigurace Firebase
-1.  Vytvořte projekt v [Firebase Console](https://console.firebase.google.com/).
-2.  Vytvořte webovou aplikaci a získejte konfigurační objekt.
-3.  Vytvořte soubor `.env` v kořenovém adresáři s konfigurací Firebase:
-    ```env
-    VITE_FIREBASE_API_KEY=...
-    VITE_FIREBASE_AUTH_DOMAIN=...
-    VITE_FIREBASE_PROJECT_ID=...
-    VITE_FIREBASE_STORAGE_BUCKET=...
-    VITE_FIREBASE_MESSAGING_SENDER_ID=...
-    VITE_FIREBASE_APP_ID=...
-    ```
+### 3. Konfigurace Prostředí (.env)
+Pro běh celého ekosystému je potřeba vytvořit tři konfigurační soubory:
 
-### 3. Konfigurace Cloud Functions (Backend)
-### 3. Konfigurace Cloud Functions (Backend)
-1.  **Lokální Vývoj:** Vytvořte soubor `functions/.env.local` (tento soubor je ignorován Gitem) podle vzoru `functions/.env.example`:
-    ```env
-    GOOGLE_GENAI_KEY=vas_gemini_api_klic
-    ```
-2.  **Produkce:** Pro nasazení použijte Firebase Secrets (vyžaduje Blaze plán):
-    ```bash
-    firebase functions:secrets:set GOOGLE_GENAI_KEY
-    ```
+#### A. Hlavní Aplikace (`/.env`)
+V kořenovém adresáři vytvořte `.env`:
+```env
+VITE_FIREBASE_API_KEY=vase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=vas_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=vas_project
+VITE_FIREBASE_STORAGE_BUCKET=vas_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
 
-### 4. Spuštění (Lokální Vývoj)
-Pro plnou funkčnost (včetně AI) je třeba spustit emulátory funkcí:
+#### B. Landing Page (`/landingpage-web/.env.local`)
+V adresáři `landingpage-web` vytvořte `.env.local`:
+```env
+GEMINI_API_KEY=vas_gemini_api_key_pro_chatbot
+```
 
-1.  **Terminál 1 - Emulátory:**
-    ```bash
-    firebase emulators:start --only functions
-    ```
-    *(Ujistěte se, že máte povolené emulátory v `firebase.json`. Port 5001 je výchozí pro funkce).*
+#### C. Backend (`/functions/.env.local`)
+V adresáři `functions` vytvořte `.env.local` pro lokální testování:
+```env
+GOOGLE_GENAI_KEY=vas_gemini_api_key_pro_backend
+```
 
-2.  **Terminál 2 - Frontend:**
-    ```bash
-    npm run dev
-    ```
+---
 
-Aplikace poběží na `http://localhost:5173` a bude se připojovat k lokálnímu backendu.
+## 💻 Vývoj (Development)
+
+Můžete spouštět jednotlivé části nebo celý systém najednou. Doporučujeme otevřít 3 terminály:
+
+### Terminál 1: Backend (Emulátory)
+Spustí lokální Firebase emulátory pro Functions, Firestore a Auth.
+```bash
+firebase emulators:start --only functions
+```
+
+### Terminál 2: Hlavní Aplikace (Lékařský Dashboard)
+```bash
+npm run dev
+```
+> Běží na: **http://localhost:5173**
+
+### Terminál 3: Landing Page (Veřejný Web)
+```bash
+npm run dev --prefix landingpage-web
+# nebo cd landingpage-web && npm run dev
+```
+> Běží na: **http://localhost:3000** (nebo jiném portu, zkontrolujte konzoli)
 
 ---
 
 ## 🚢 Nasazení (Deployment)
 
-Aplikace je připravena pro nasazení na **Firebase Hosting**.
+Projekt je konfigurován pro nasazení na **Firebase Hosting** a **Cloud Functions**.
+
+### 1. Build
+Nejprve sestavte produkční verze:
 
 ```bash
-# Sestavení frontendu i backendu
-npm run build
-cd functions && npm run build && cd ..
+# Sestavení Landing Page (Hlavní webová prezentace)
+npm run build:landing
 
-# Nasazení (vyžaduje Blaze plán pro Functions)
+# Sestavení Hlavní Aplikace (volitelné, pokud ji nasazujete samostatně)
+npm run build
+
+# Příprava Backend Funkcí
+cd functions && npm run build && cd ..
+```
+
+### 2. Deploy
+Nasazení celého projektu do cloudu:
+
+```bash
 firebase deploy
 ```
 
+> **Poznámka k Hostingu:** Výchozí konfigurace ve `firebase.json` nasazuje jako hlavní web (`public`) obsah z `landingpage-web/dist`. Pokud chcete nasadit Dashboard aplikaci, upravte nastavení hostingu ve `firebase.json`.
+
 ---
 
-## ⚠️ Legislativní Upozornění
-*Aplikace MedVoice AI slouží jako podpůrný nástroj. Výstupy musí být vždy validovány lékařem před vložením do NIS. Aplikace splňuje technické předpoklady pro vedení zdravotnické dokumentace dle vyhlášky č. 444/2024 Sb., ale nenahrazuje lékařský úsudek.*
+## ⚠️ Právní Vyloučení Odpovědnosti
+*Aplikace MedVoice AI slouží výhradně jako administrativní nástroj pro podporu dokumentace. Výstupy generované umělou inteligencí musí být vždy ověřeny kvalifikovaným zdravotnickým pracovníkem. Nástroj nenahrazuje lékařský úsudek.*
