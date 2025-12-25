@@ -12,8 +12,8 @@ Projekt je spravován jako **monorepo**, které sjednocuje tři klíčové kompo
 
 | Komponenta | Cesta | Technologie | Popis |
 | :--- | :--- | :--- | :--- |
-| **Hlavní Aplikace** | `/` (root) | React 19, Vite | Nástroj pro lékaře: nahrávání, diktování, správa pacientů. |
-| **Landing Page** | `/landingpage-web` | React 19, Tailwind v4 | Veřejný web s prezentací a AI asistentem. |
+| **Hlavní Aplikace (Dashboard)** | `/apps/dashboard` | React 19, Vite | Nástroj pro lékaře: nahrávání, diktování, správa pacientů. |
+| **Landing Page** | `/apps/landing` | React 19, Tailwind v4 | Veřejný web s prezentací a AI asistentem. |
 | **Backend** | `/functions` | Firebase Functions, Node.js | Bezpečná cloudová logika, integrace s Gemini AI. |
 
 Složka `/services` v rootu obsahuje sdílený kód a API integrace využívané hlavní aplikací.
@@ -62,25 +62,19 @@ git clone [url-repozitare]
 cd MedVoice-Ai
 ```
 
-### 2. Instalace Závislostí
-Projekt vyžaduje instalaci závislostí pro každou část zvlášť:
+### 2. Instalace Závislostí (Standardizováno)
+Díky **NPM Workspaces** stačí instalovat závislosti pouze jednou v kořenovém adresáři:
 
 ```bash
-# 1. Hlavní Aplikace (Root)
 npm install
-
-# 2. Landing Page
-cd landingpage-web && npm install && cd ..
-
-# 3. Backend (Functions)
-cd functions && npm install && cd ..
 ```
+*Tento příkaz automaticky nainstaluje balíčky pro Dashboard, Landing Page i Backend.*
 
 ### 3. Konfigurace Prostředí (.env)
 Pro běh celého ekosystému je potřeba vytvořit tři konfigurační soubory:
 
-#### A. Hlavní Aplikace (`/.env`)
-V kořenovém adresáři vytvořte `.env`:
+#### A. Hlavní Aplikace (`apps/dashboard/.env`)
+V adresáři `apps/dashboard` vytvořte `.env`:
 ```env
 VITE_FIREBASE_API_KEY=vase_api_key
 VITE_FIREBASE_AUTH_DOMAIN=vas_project.firebaseapp.com
@@ -88,10 +82,11 @@ VITE_FIREBASE_PROJECT_ID=vas_project
 VITE_FIREBASE_STORAGE_BUCKET=vas_project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MEASUREMENT_ID=...
 ```
 
-#### B. Landing Page (`/landingpage-web/.env.local`)
-V adresáři `landingpage-web` vytvořte `.env.local`:
+#### B. Landing Page (`apps/landing/.env.local`)
+V adresáři `apps/landing` vytvořte `.env.local`:
 ```env
 GEMINI_API_KEY=vas_gemini_api_key_pro_chatbot
 ```
@@ -106,26 +101,29 @@ GOOGLE_GENAI_KEY=vas_gemini_api_key_pro_backend
 
 ## 💻 Vývoj (Development)
 
-Můžete spouštět jednotlivé části nebo celý systém najednou. Doporučujeme otevřít 3 terminály:
+### 💻 Standardizovaný Vývoj (Turborepo)
 
-### Terminál 1: Backend (Emulátory)
-Spustí lokální Firebase emulátory pro Functions, Firestore a Auth.
-```bash
-firebase emulators:start --only functions
-```
+Díky nasazení **Turborepo** můžete spouštět vývojové prostředí pro všechny aplikace jedním příkazem.
 
-### Terminál 2: Hlavní Aplikace (Lékařský Dashboard)
+#### 1. Spuštění Frontendů (Dashboard + Landing)
 ```bash
 npm run dev
+# nebo
+npx turbo run dev
 ```
-> Běží na: **http://localhost:5173**
+> *   Dashboard: **http://localhost:5173**
+> *   Landing Page: **http://localhost:3000**
 
-### Terminál 3: Landing Page (Veřejný Web)
+#### 2. Spuštění Backendu (Firebase Emulators)
+Emulátory se spouští separátně, protože blokují terminál a vyžadují specifické prostředí.
+
 ```bash
-npm run dev --prefix landingpage-web
-# nebo cd landingpage-web && npm run dev
+# 1. Build backendu (jednorázově nebo při změně)
+cd functions && npm run build
+
+# 2. Start emulátorů
+firebase emulators:start --only functions
 ```
-> Běží na: **http://localhost:3000** (nebo jiném portu, zkontrolujte konzoli)
 
 ---
 
@@ -133,19 +131,15 @@ npm run dev --prefix landingpage-web
 
 Projekt je konfigurován pro nasazení na **Firebase Hosting** a **Cloud Functions**.
 
-### 1. Build
-Nejprve sestavte produkční verze:
+### 1. Build (Turborepo)
+Sestavení celého projektu (všech aplikací) najednou:
 
 ```bash
-# Sestavení Landing Page (Hlavní webová prezentace)
-npm run build:landing
-
-# Sestavení Hlavní Aplikace (volitelné, pokud ji nasazujete samostatně)
 npm run build
-
-# Příprava Backend Funkcí
-cd functions && npm run build && cd ..
+# nebo
+npx turbo run build
 ```
+*Tento příkaz paralelně sestaví Dashboard, Landing Page i Backend (transpilaci TS).*
 
 ### 2. Deploy
 Nasazení celého projektu do cloudu:
@@ -154,7 +148,7 @@ Nasazení celého projektu do cloudu:
 firebase deploy
 ```
 
-> **Poznámka k Hostingu:** Výchozí konfigurace ve `firebase.json` nasazuje jako hlavní web (`public`) obsah z `landingpage-web/dist`. Pokud chcete nasadit Dashboard aplikaci, upravte nastavení hostingu ve `firebase.json`.
+> **Poznámka k Hostingu:** Výchozí konfigurace nasazuje Landing Page (`apps/landing/dist`) jako veřejný web. Dashboard (`apps/dashboard/dist`) není ve výchozím nastavení nasazen na veřejnou URL, pokud nezměníte `firebase.json`.
 
 ---
 
