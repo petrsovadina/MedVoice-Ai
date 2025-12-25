@@ -15,13 +15,13 @@ import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDpzsnGT2Of9VbZddAXPhe0eP_thNCHLWo",
-    authDomain: "medvoice-ai-1.firebaseapp.com",
-    projectId: "medvoice-ai-1",
-    storageBucket: "medvoice-ai-1.firebasestorage.app",
-    messagingSenderId: "487576277164",
-    appId: "1:487576277164:web:e555f01a59f8f99e37cf09",
-    measurementId: "G-81RK09275R"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase

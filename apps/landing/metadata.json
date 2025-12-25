@@ -1,0 +1,7 @@
+{
+  "name": "MedVoice-WEB",
+  "description": "Next-generation AI voice intelligence for medical professionals.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

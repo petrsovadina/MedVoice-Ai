@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+
+@layer base {
+  body {
+    @apply transition-colors duration-500 ease-in-out antialiased;
+  }
+}
+
+.mask-gradient-to-l {
+  mask-image: linear-gradient(to left, black, transparent);
+  -webkit-mask-image: linear-gradient(to left, black, transparent);
+}
+
+/* Skrytí scrollbaru pro čistý design */
+::-webkit-scrollbar {
+  display: none;
+}
