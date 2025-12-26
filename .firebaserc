@@ -2,6 +2,17 @@
   "projects": {
     "default": "medvoice-ai-1"
   },
-  "targets": {},
+  "targets": {
+    "medvoice-ai-1": {
+      "hosting": {
+        "landing": [
+          "medvoice-ai-1"
+        ],
+        "dashboard": [
+          "dashboard-36206"
+        ]
+      }
+    }
+  },
   "etags": {}
 }

@@ -1,37 +1,41 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkStorageConfig = exports.generateStructuredDocument = exports.detectIntents = exports.extractEntities = exports.summarizeTranscript = exports.transcribeAudio = void 0;
-const functions = require("firebase-functions");
+const https_1 = require("firebase-functions/v2/https");
+const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
-const genai_1 = require("@google/genai");
+const generative_ai_1 = require("@google/generative-ai");
 const types_1 = require("./types");
 const prompts_1 = require("./prompts");
+const v2_1 = require("firebase-functions/v2");
+// Set global options for all functions
+(0, v2_1.setGlobalOptions)({ region: "us-central1" });
 admin.initializeApp();
 // Initialize Gemini Client
-// Requires GOOGLE_GENAI_KEY in environment variables
 const getAIClient = () => {
     const apiKey = process.env.GOOGLE_GENAI_KEY;
     if (!apiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'Gemini API Key is not configured in the Backend Environment.');
+        logger.error("Gemini API Key is not configured in the Backend Environment.");
+        throw new https_1.HttpsError('failed-precondition', 'Gemini API Key is not configured in the Backend Environment.');
     }
-    return new genai_1.GoogleGenAI({ apiKey });
+    return new generative_ai_1.GoogleGenerativeAI(apiKey);
 };
 const handleError = (error, context) => {
-    console.error(`[${context}] Error:`, error);
+    logger.error(`[${context}] Error:`, error);
     // Check for resource exhaustion (Quota exceeded)
     if (error.status === 429 || error.toString().includes('429') || error.toString().includes('RESOURCE_EXHAUSTED')) {
-        return new functions.https.HttpsError('resource-exhausted', `Quota exceeded for Gemini API in ${context}.`);
+        return new https_1.HttpsError('resource-exhausted', `Quota exceeded for Gemini API in ${context}.`);
     }
-    if (error instanceof functions.https.HttpsError) {
+    if (error instanceof https_1.HttpsError) {
         return error;
     }
-    return new functions.https.HttpsError('internal', `An unexpected error occurred in ${context}: ${error.message || error}`);
+    return new https_1.HttpsError('internal', `An unexpected error occurred in ${context}: ${error.message || String(error)}`);
 };
-const assertAuth = (context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+const assertAuth = (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
-    return context.auth;
+    return request.auth;
 };
 const cleanAndParseJSON = (text, fallback) => {
     if (!text)
@@ -41,45 +45,43 @@ const cleanAndParseJSON = (text, fallback) => {
         return JSON.parse(codeBlockMatch ? codeBlockMatch[1] : text);
     }
     catch (e) {
+        logger.warn("Failed to parse JSON, returning fallback.", { text });
         return fallback;
     }
 };
+const safetySettings = [
+    { category: generative_ai_1.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: generative_ai_1.HarmBlockThreshold.BLOCK_NONE },
+    { category: generative_ai_1.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: generative_ai_1.HarmBlockThreshold.BLOCK_NONE },
+    { category: generative_ai_1.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: generative_ai_1.HarmBlockThreshold.BLOCK_NONE },
+    { category: generative_ai_1.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: generative_ai_1.HarmBlockThreshold.BLOCK_NONE },
+];
 // 1. Transcribe Audio
-exports.transcribeAudio = functions.runWith({ timeoutSeconds: 300, memory: '1GB' }).https.onCall(async (data, context) => {
-    assertAuth(context);
-    const { storagePath, mimeType } = data;
+exports.transcribeAudio = (0, https_1.onCall)({ timeoutSeconds: 300, memory: '1GiB' }, async (request) => {
+    assertAuth(request);
+    const { storagePath, mimeType } = request.data;
     if (!storagePath || !mimeType) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing storagePath or mimeType');
+        throw new https_1.HttpsError('invalid-argument', 'Missing storagePath or mimeType');
     }
     try {
-        console.log(`[transcribeAudio] Started with storagePath: ${storagePath}, mimeType: ${mimeType}`);
+        logger.info(`[transcribeAudio] Started with storagePath: ${storagePath}, mimeType: ${mimeType}`);
+        const genAI = getAIClient();
         const bucket = admin.storage().bucket();
-        console.log(`[transcribeAudio] Bucket name: ${bucket.name}`);
         const file = bucket.file(storagePath);
-        console.log(`[transcribeAudio] Checking existence of file...`);
         const [exists] = await file.exists();
-        console.log(`[transcribeAudio] File exists: ${exists}`);
         if (!exists) {
-            console.error(`[transcribeAudio] File not found: ${storagePath}`);
-            throw new functions.https.HttpsError('not-found', 'Audio file not found in storage');
+            logger.error(`[transcribeAudio] File not found: ${storagePath}`);
+            throw new https_1.HttpsError('not-found', 'Audio file not found in storage');
         }
-        console.log(`[transcribeAudio] Downloading file...`);
         const [buffer] = await file.download();
-        console.log(`[transcribeAudio] Download complete. Buffer size: ${buffer.length}`);
         const audioBase64 = buffer.toString('base64');
-        console.log(`[transcribeAudio] Converted to base64. Calling Gemini...`);
-        const ai = getAIClient();
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: {
-                parts: [
-                    { inlineData: { mimeType, data: audioBase64 } },
-                    { text: prompts_1.PROMPTS.TRANSCRIBE_SYSTEM }
-                ]
-            },
-            config: { responseMimeType: "application/json" }
-        });
-        const parsed = cleanAndParseJSON(response.text, { segments: [] });
+        logger.info(`[transcribeAudio] Converted to base64. Calling Gemini...`);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", safetySettings });
+        const result = await model.generateContent([
+            prompts_1.PROMPTS.TRANSCRIBE_SYSTEM,
+            { inlineData: { mimeType, data: audioBase64 } },
+        ]);
+        const response = result.response;
+        const parsed = cleanAndParseJSON(response.text(), { segments: [] });
         return {
             text: parsed.segments.map(s => `${s.speaker}: ${s.text}`).join('\n\n'),
             segments: parsed.segments
@@ -90,35 +92,34 @@ exports.transcribeAudio = functions.runWith({ timeoutSeconds: 300, memory: '1GB'
     }
 });
 // 2. Summarize
-exports.summarizeTranscript = functions.https.onCall(async (data, context) => {
-    assertAuth(context);
-    const { transcript, useThinking } = data;
-    // Using 2.5 Flash as standard, 2.5 Pro for thinking if needed (though mapping logic simplified here)
-    const model = useThinking ? "gemini-2.5-pro" : "gemini-2.5-flash";
+exports.summarizeTranscript = (0, https_1.onCall)(async (request) => {
+    assertAuth(request);
+    const { transcript, useThinking } = request.data;
+    const modelName = useThinking ? "gemini-1.5-pro" : "gemini-1.5-flash";
     try {
-        const ai = getAIClient();
-        const response = await ai.models.generateContent({
-            model,
-            contents: `${prompts_1.PROMPTS.SUMMARIZE_SYSTEM}\n${transcript}`,
-        });
-        return { summary: response.text || "" };
+        const genAI = getAIClient();
+        const model = genAI.getGenerativeModel({ model: modelName, safetySettings });
+        const result = await model.generateContent(`${prompts_1.PROMPTS.SUMMARIZE_SYSTEM}\n${transcript}`);
+        const response = result.response;
+        return { summary: response.text() || "" };
     }
     catch (error) {
         throw handleError(error, "summarizeTranscript");
     }
 });
 // 3. Extract Entities
-exports.extractEntities = functions.https.onCall(async (data, context) => {
-    assertAuth(context);
-    const { transcript } = data;
+exports.extractEntities = (0, https_1.onCall)(async (request) => {
+    assertAuth(request);
+    const { transcript } = request.data;
     try {
-        const ai = getAIClient();
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `${prompts_1.PROMPTS.EXTRACT_ENTITIES_SYSTEM}\n${transcript}`,
-            config: { responseMimeType: "application/json" }
+        const genAI = getAIClient();
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", safetySettings });
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: `${prompts_1.PROMPTS.EXTRACT_ENTITIES_SYSTEM}\n${transcript}` }] }],
+            generationConfig: { responseMimeType: "application/json" }
         });
-        const parsed = cleanAndParseJSON(response.text, { entities: [] });
+        const response = result.response;
+        const parsed = cleanAndParseJSON(response.text(), { entities: [] });
         return { entities: parsed.entities || [] };
     }
     catch (error) {
@@ -126,17 +127,18 @@ exports.extractEntities = functions.https.onCall(async (data, context) => {
     }
 });
 // 4. Detect Intents
-exports.detectIntents = functions.https.onCall(async (data, context) => {
-    assertAuth(context);
-    const { summary } = data;
+exports.detectIntents = (0, https_1.onCall)(async (request) => {
+    assertAuth(request);
+    const { summary } = request.data;
     try {
-        const ai = getAIClient();
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `${prompts_1.PROMPTS.DETECT_INTENTS_SYSTEM}\n${summary}`,
-            config: { responseMimeType: "application/json" }
+        const genAI = getAIClient();
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", safetySettings });
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: `${prompts_1.PROMPTS.DETECT_INTENTS_SYSTEM}\n${summary}` }] }],
+            generationConfig: { responseMimeType: "application/json" }
         });
-        const parsed = cleanAndParseJSON(response.text, { intents: [types_1.ReportType.AMBULATORY_RECORD] });
+        const response = result.response;
+        const parsed = cleanAndParseJSON(response.text(), { intents: [types_1.ReportType.AMBULATORY_RECORD] });
         return { intents: parsed.intents };
     }
     catch (error) {
@@ -144,10 +146,10 @@ exports.detectIntents = functions.https.onCall(async (data, context) => {
     }
 });
 // 5. Generate Report
-exports.generateStructuredDocument = functions.https.onCall(async (data, context) => {
-    assertAuth(context);
-    const { summary, type, entities, useThinking } = data;
-    const model = useThinking ? "gemini-2.5-pro" : "gemini-2.5-flash";
+exports.generateStructuredDocument = (0, https_1.onCall)(async (request) => {
+    assertAuth(request);
+    const { summary, type, entities, useThinking } = request.data;
+    const modelName = useThinking ? "gemini-1.5-pro" : "gemini-1.5-flash";
     let schema = "";
     switch (type) {
         case types_1.ReportType.AMBULATORY_RECORD:
@@ -165,15 +167,14 @@ exports.generateStructuredDocument = functions.https.onCall(async (data, context
         default: schema = `{"notes":""}`;
     }
     try {
-        const ai = getAIClient();
-        const response = await ai.models.generateContent({
-            model,
-            contents: `${prompts_1.PROMPTS.GENERATE_REPORT_SYSTEM(type, JSON.stringify(entities), schema)}\n${summary}`,
-            config: { responseMimeType: "application/json" }
+        const genAI = getAIClient();
+        const model = genAI.getGenerativeModel({ model: modelName, safetySettings });
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: `${prompts_1.PROMPTS.GENERATE_REPORT_SYSTEM(type, JSON.stringify(entities), schema)}\n${summary}` }] }],
+            generationConfig: { responseMimeType: "application/json" }
         });
-        const reportData = cleanAndParseJSON(response.text, {});
-        // Note: ID generation remains client-side or handled here, but we return data. 
-        // We can generate ID here too.
+        const response = result.response;
+        const reportData = cleanAndParseJSON(response.text(), {});
         const id = Math.random().toString(36).substr(2, 9);
         return {
             report: {
@@ -187,23 +188,26 @@ exports.generateStructuredDocument = functions.https.onCall(async (data, context
         throw handleError(error, "generateStructuredDocument");
     }
 });
-exports.checkStorageConfig = functions.https.onCall(async (data, context) => {
+// 6. Check Storage Config
+exports.checkStorageConfig = (0, https_1.onCall)(async (request) => {
     var _a;
-    assertAuth(context);
+    assertAuth(request);
     try {
-        const bucket = admin.storage().bucket(); // Gets default bucket
+        const bucket = admin.storage().bucket();
         const [exists] = await bucket.exists();
+        const projectId = ((_a = admin.app().options.credential) === null || _a === void 0 ? void 0 : _a.projectId) || process.env.GCLOUD_PROJECT;
+        const storageBucketOption = (admin.app().options.storageBucket);
         return {
             bucketName: bucket.name,
             exists: exists,
-            projectId: ((_a = admin.app().options.credential) === null || _a === void 0 ? void 0 : _a.projectId) || process.env.GCLOUD_PROJECT,
-            storageBucketOption: admin.instanceId().app.options.storageBucket,
+            projectId: projectId,
+            storageBucketOption: storageBucketOption,
             message: "Bucket configuration info"
         };
     }
     catch (error) {
-        console.error("Storage check failed", error);
-        return { error: error.message };
+        logger.error("Storage check failed", error);
+        throw handleError(error, "checkStorageConfig");
     }
 });
 //# sourceMappingURL=index.js.map

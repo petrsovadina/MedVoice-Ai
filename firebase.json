@@ -20,21 +20,30 @@
       ]
     }
   ],
-  "hosting": {
-    "public": "apps/landing/dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "cleanUrls": true
-  },
+  "hosting": [
+    {
+      "target": "dashboard",
+      "public": "apps/dashboard/dist",
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "cleanUrls": true
+    },
+    {
+      "target": "landing",
+      "public": "apps/landing/dist",
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "cleanUrls": true
+    }
+  ],
   "emulators": {
     "functions": {
       "port": 5001
