@@ -17,8 +17,8 @@
         "@google/genai": "*",
         "@google/generative-ai": "^0.24.1",
         "@modelcontextprotocol/sdk": "^1.25.1",
-        "firebase-admin": "^11.8.0",
-        "firebase-functions": "^7.0.2"
+        "firebase-admin": "^13.6.0",
+        "firebase-functions": "^4.3.1"
     },
     "devDependencies": {
         "firebase-functions-test": "^3.1.0",
