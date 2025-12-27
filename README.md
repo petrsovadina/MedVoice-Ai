@@ -34,7 +34,7 @@ Složka `/services` v rootu obsahuje sdílený kód a API integrace využívané
 
 ### 🔒 Backend & Bezpečnost
 *   **HIPAA/GDPR Compliance:** Bezpečné zpracování a ukládání dat.
-*   **Diarizace Mluvčích:** Automatické rozlišení hlasů (Lékař/Pacient).
+*   **Diarizace Mluvčích:** Automatické rozlišení hlasů (Lékař/Pacient) pomocí AI (Gemini).
 *   **Gemini 2.0 Flash:** Nejnovější AI model optimalizovaný pro medicínskou analýzu.
 
 ---
@@ -73,8 +73,8 @@ npm install
 ### 3. Konfigurace Prostředí (.env)
 Pro běh celého ekosystému je potřeba vytvořit tři konfigurační soubory:
 
-#### A. Hlavní Aplikace (`apps/dashboard/.env`)
-V adresáři `apps/dashboard` vytvořte `.env`:
+#### A. Hlavní Aplikace (`apps/dashboard/.env.local`)
+V adresáři `apps/dashboard` vytvořte `.env.local` (tento soubor je ignorován v gitu):
 ```env
 VITE_FIREBASE_API_KEY=vase_api_key
 VITE_FIREBASE_AUTH_DOMAIN=vas_project.firebaseapp.com
@@ -148,7 +148,7 @@ Nasazení celého projektu do cloudu:
 firebase deploy
 ```
 
-> **Poznámka k Hostingu:** Výchozí konfigurace nasazuje Landing Page (`apps/landing/dist`) jako veřejný web. Dashboard (`apps/dashboard/dist`) není ve výchozím nastavení nasazen na veřejnou URL, pokud nezměníte `firebase.json`.
+> **Poznámka k Hostingu:** Projekt využívá **Hosting Targets**. Landing Page je nasazena jako target `landing` a Dashboard jako target `dashboard`. V `.firebaserc` jsou tyto targets mapovány na konkrétní sites ve Firebase projektu.
 
 ---
 

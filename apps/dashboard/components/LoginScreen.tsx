@@ -22,6 +22,36 @@ export const LoginScreen: React.FC = () => {
         }
     };
 
+    // Parse URL mode
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode') || 'login';
+
+    const getContent = () => {
+        switch (mode) {
+            case 'signup':
+                return {
+                    title: 'Vytvořte si účet',
+                    subtitle: 'Začněte používat MedVoice AI zdarma.',
+                    button: 'Zaregistrovat přes Google'
+                };
+            case 'demo':
+                return {
+                    title: 'Vyzkoušet Demo',
+                    subtitle: 'Přihlašte se pro přístup k ukázce.',
+                    button: 'Spustit Demo (přihlášení)'
+                };
+            default:
+                return {
+                    title: 'MedVoice AI',
+                    subtitle: 'Inteligentní hlasový asistent pro moderní lékařskou praxi.',
+                    button: 'Přihlásit přes Google'
+                };
+        }
+    };
+
+    const content = getContent();
+
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-primary-50 relative overflow-hidden">
             {/* Background Decorations */}
@@ -37,9 +67,9 @@ export const LoginScreen: React.FC = () => {
                         </div>
                     </div>
 
-                    <h1 className="text-3xl font-black text-slate-900 mb-3 tracking-tight">MedVoice AI</h1>
+                    <h1 className="text-3xl font-black text-slate-900 mb-3 tracking-tight">{content.title}</h1>
                     <p className="text-slate-500 font-medium mb-8 leading-relaxed">
-                        Inteligentní hlasový asistent pro moderní lékařskou praxi.
+                        {content.subtitle}
                     </p>
 
                     <div className="space-y-4 mb-8">
@@ -79,7 +109,7 @@ export const LoginScreen: React.FC = () => {
                         ) : (
                             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="G" />
                         )}
-                        <span>{isLoggingIn ? 'Přihlašování...' : 'Přihlásit přes Google'}</span>
+                        <span>{isLoggingIn ? 'Přihlašování...' : content.button}</span>
                     </button>
 
                     <p className="mt-8 text-xs text-slate-400 font-medium">
