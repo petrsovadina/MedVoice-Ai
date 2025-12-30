@@ -87,7 +87,7 @@ export const transcribeAudio = onCall({ timeoutSeconds: 300, memory: '1GiB' }, a
         const audioBase64 = buffer.toString('base64');
         logger.info(`[transcribeAudio] Converted to base64. Calling Gemini...`);
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-001", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", safetySettings });
         const result = await model.generateContent([
             PROMPTS.TRANSCRIBE_SYSTEM,
             { inlineData: { mimeType, data: audioBase64 } },
@@ -109,7 +109,7 @@ export const transcribeAudio = onCall({ timeoutSeconds: 300, memory: '1GiB' }, a
 export const summarizeTranscript = onCall(async (request) => {
     assertAuth(request);
     const { transcript, useThinking } = request.data;
-    const modelName = useThinking ? "gemini-2.5-pro-001" : "gemini-2.5-flash-001";
+    const modelName = useThinking ? "gemini-2.5-pro" : "gemini-2.5-flash";
 
     try {
         const genAI = getAIClient();
@@ -129,7 +129,7 @@ export const extractEntities = onCall(async (request) => {
 
     try {
         const genAI = getAIClient();
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-001", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", safetySettings });
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: `${PROMPTS.EXTRACT_ENTITIES_SYSTEM}\n${transcript}` }] }],
             generationConfig: { responseMimeType: "application/json" }
@@ -150,7 +150,7 @@ export const detectIntents = onCall(async (request) => {
 
     try {
         const genAI = getAIClient();
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-001", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", safetySettings });
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: `${PROMPTS.DETECT_INTENTS_SYSTEM}\n${summary}` }] }],
             generationConfig: { responseMimeType: "application/json" }
@@ -168,7 +168,7 @@ export const detectIntents = onCall(async (request) => {
 export const generateStructuredDocument = onCall(async (request) => {
     assertAuth(request);
     const { summary, type, entities, useThinking } = request.data;
-    const modelName = useThinking ? "gemini-2.5-pro-001" : "gemini-2.5-flash-001";
+    const modelName = useThinking ? "gemini-2.5-pro" : "gemini-2.5-flash";
 
     let schema = "";
     switch (type) {
