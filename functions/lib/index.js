@@ -75,7 +75,7 @@ exports.transcribeAudio = (0, https_1.onCall)({ timeoutSeconds: 300, memory: '1G
         const [buffer] = await file.download();
         const audioBase64 = buffer.toString('base64');
         logger.info(`[transcribeAudio] Converted to base64. Calling Gemini...`);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-001", safetySettings });
         const result = await model.generateContent([
             prompts_1.PROMPTS.TRANSCRIBE_SYSTEM,
             { inlineData: { mimeType, data: audioBase64 } },
@@ -95,7 +95,7 @@ exports.transcribeAudio = (0, https_1.onCall)({ timeoutSeconds: 300, memory: '1G
 exports.summarizeTranscript = (0, https_1.onCall)(async (request) => {
     assertAuth(request);
     const { transcript, useThinking } = request.data;
-    const modelName = useThinking ? "gemini-1.5-pro" : "gemini-1.5-flash";
+    const modelName = useThinking ? "gemini-2.5-pro-001" : "gemini-2.5-flash-001";
     try {
         const genAI = getAIClient();
         const model = genAI.getGenerativeModel({ model: modelName, safetySettings });
@@ -113,7 +113,7 @@ exports.extractEntities = (0, https_1.onCall)(async (request) => {
     const { transcript } = request.data;
     try {
         const genAI = getAIClient();
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-001", safetySettings });
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: `${prompts_1.PROMPTS.EXTRACT_ENTITIES_SYSTEM}\n${transcript}` }] }],
             generationConfig: { responseMimeType: "application/json" }
@@ -132,7 +132,7 @@ exports.detectIntents = (0, https_1.onCall)(async (request) => {
     const { summary } = request.data;
     try {
         const genAI = getAIClient();
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-001", safetySettings });
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: `${prompts_1.PROMPTS.DETECT_INTENTS_SYSTEM}\n${summary}` }] }],
             generationConfig: { responseMimeType: "application/json" }
@@ -149,7 +149,7 @@ exports.detectIntents = (0, https_1.onCall)(async (request) => {
 exports.generateStructuredDocument = (0, https_1.onCall)(async (request) => {
     assertAuth(request);
     const { summary, type, entities, useThinking } = request.data;
-    const modelName = useThinking ? "gemini-1.5-pro" : "gemini-1.5-flash";
+    const modelName = useThinking ? "gemini-2.5-pro-001" : "gemini-2.5-flash-001";
     let schema = "";
     switch (type) {
         case types_1.ReportType.AMBULATORY_RECORD:
