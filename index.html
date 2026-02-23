@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MedVoice AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                50: '#f0f9ff',
+                100: '#e0f2fe',
+                200: '#bae6fd',
+                300: '#7dd3fc',
+                400: '#38bdf8',
+                500: '#0ea5e9',
+                600: '#0284c7',
+                700: '#0369a1',
+                800: '#075985',
+                900: '#0c4a6e',
+              },
+              accent: {
+                primary: 'rgb(92, 215, 185)',
+              }
+            },
+            fontFamily: {
+              montserrat: ['Montserrat', 'sans-serif'],
+              inter: ['Inter', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --wr-max: 1300px;
+        --color-bg-a: rgb(255, 255, 255);
+        --color-bg-b: rgb(247, 248, 248);
+        --color-bg-c: rgb(240, 250, 255);
+        --color-bg-d: rgb(238, 252, 248);
+        --color-accent-primary: rgb(92, 215, 185);
+        --color-text-primary: rgb(33, 33, 57);
+        --color-text-secondary: rgb(62, 62, 81);
+        --color-border-normal: rgb(229, 229, 229);
+      }
+
+      body { 
+        font-family: 'Inter', -apple-system, sans-serif; 
+        background-color: var(--color-bg-b);
+        color: var(--color-text-secondary);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .theme-1ghzbdec7g {
+        --color-bg: rgb(248, 248, 248);
+        --color-text-link: rgb(44, 147, 121);
+        --color-accent-primary: rgb(92, 215, 185);
+      }
+
+      /* Custom scrollbar */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: #f1f1f1; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      .card-medical {
+        background: #fff;
+        border-radius: 24px;
+        box-shadow: 0px 10px 30px -10px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--color-border-normal);
+      }
+
+      .btn-primary-medical {
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
+        color: rgb(33, 33, 57);
+        background: rgb(92, 215, 185);
+        box-shadow: 0px 8px 32px 0px rgba(92, 214, 184, 0.38);
+        border-radius: 16px;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary-medical:hover {
+        background: rgb(80, 227, 191);
+        transform: translateY(-2px);
+      }
+
+      .btn-secondary-medical {
+        background: rgba(92, 214, 184, 0.15);
+        color: rgb(33, 33, 57);
+        border-radius: 12px;
+        transition: all 0.2s ease;
+      }
+
+      .btn-secondary-medical:hover {
+        background: rgba(92, 214, 184, 0.25);
+      }
+
+      .entity-input {
+        background: var(--color-bg-b);
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 14px;
+        transition: all 0.2s;
+      }
+
+      .entity-input:focus {
+        border-color: var(--color-accent-primary);
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(92, 215, 185, 0.1);
+        outline: none;
+      }
+
+      .report-paper {
+        background: #fff;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.05);
+        border-radius: 4px;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.292.0?external=react,react-dom",
+    "jspdf": "https://aistudiocdn.com/jspdf@^3.0.4",
+    "@tiptap/core": "https://esm.sh/@tiptap/core@2.2.4?external=react,react-dom",
+    "@tiptap/pm/state": "https://esm.sh/@tiptap/pm@2.2.4/state",
+    "@tiptap/pm/view": "https://esm.sh/@tiptap/pm@2.2.4/view",
+    "@tiptap/pm/model": "https://esm.sh/@tiptap/pm@2.2.4/model",
+    "@tiptap/pm/transform": "https://esm.sh/@tiptap/pm@2.2.4/transform",
+    "@tiptap/pm/commands": "https://esm.sh/@tiptap/pm@2.2.4/commands",
+    "@tiptap/pm/history": "https://esm.sh/@tiptap/pm@2.2.4/history",
+    "@tiptap/pm/schema-list": "https://esm.sh/@tiptap/pm@2.2.4/schema-list",
+    "@tiptap/react": "https://esm.sh/@tiptap/react@2.2.4?external=react,react-dom",
+    "@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@2.2.4?external=react,react-dom",
+    "@tiptap/extension-bubble-menu": "https://esm.sh/@tiptap/extension-bubble-menu@2.2.4?external=react,react-dom",
+    "@tiptap/extension-floating-menu": "https://esm.sh/@tiptap/extension-floating-menu@2.2.4?external=react,react-dom",
+    "@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.2.4?external=react,react-dom",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4",
+    "vite": "https://esm.sh/vite@^7.3.1"
+  }
+}
+</script>
+</head>
+  <body class="theme-1ghzbdec7g">
+    <div id="root"></div>
+  </body>
+</html>
